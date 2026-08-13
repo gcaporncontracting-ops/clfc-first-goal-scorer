@@ -147,7 +147,16 @@ function renderPinScreen(){
       const data = await res.json();
       if (!res.ok){ errBox.innerHTML = `<p class="error">${data.error}</p>`; btn.disabled = false; return; }
       setSession({ pin, voterSlug: data.voterSlug, fullName: data.fullName, testingMode: data.testingMode });
-      renderNameScreen(data);
+      if (data.fullName){
+        // Real PIN resolved a known identity — name is already known, skip straight to grade.
+        const session = getSession();
+        session.fullName = data.fullName;
+        setSession(session);
+        renderGradeSelect();
+      } else {
+        // Testing PIN (0000) has no fixed identity — still ask for a name.
+        renderNameScreen(data);
+      }
     }catch(e){
       errBox.innerHTML = `<p class="error">Network error — try again.</p>`;
       btn.disabled = false;
@@ -239,6 +248,7 @@ async function renderGradeSpin(grade, gameId, session){
   `;
 
   document.getElementById("startOverLink").addEventListener("click", ()=>{
+    if (activePollInterval) clearInterval(activePollInterval);
     sessionStorage.removeItem(STORAGE_KEY);
     main();
   });
@@ -246,7 +256,8 @@ async function renderGradeSpin(grade, gameId, session){
   let wheelOptions = players.map(p=>p.name);
   drawWheel(wheelOptions);
   pollResults(gameId);
-  setInterval(()=>pollResults(gameId), 6000);
+  if (activePollInterval) clearInterval(activePollInterval);
+  activePollInterval = setInterval(()=>pollResults(gameId), 6000);
 
   document.getElementById("spinBtn").addEventListener("click", async ()=>{
     const btn = document.getElementById("spinBtn");
@@ -333,6 +344,7 @@ async function pollResults(gameId){
 // ---------------- Wheel drawing (matches club's wheel visual style) ----------------
 const wheelColors = ['#d62828', '#ffffff', '#1d4fd8'];
 let wheelRotation = 0;
+let activePollInterval = null;
 
 function drawWheel(options){
   const canvas = document.getElementById("wheelCanvas");
@@ -353,15 +365,29 @@ function drawWheel(options){
 
     const textColor = bg === '#ffffff' ? '#132a6e' : '#ffffff';
     const mid = start + slice/2;
-    const labelRadius = (hubRadius+radius)*0.6;
-    const x = center + Math.cos(mid)*labelRadius;
-    const y = center + Math.sin(mid)*labelRadius;
+
+    // Start near the outer rim and run the full name inward toward the
+    // hub — text stays upright relative to that radial line (not curved
+    // along the rim), so it reads left-to-right as it travels inward.
+    const startRadius = radius - 16;
+    const innerLimit = hubRadius + 12;
+    const maxRunLength = startRadius - innerLimit;
+
     ctx.save();
-    ctx.translate(x,y); ctx.rotate(mid + Math.PI/2);
-    ctx.textAlign = 'center'; ctx.textBaseline='middle';
-    ctx.fillStyle = textColor; ctx.font = "bold 13px 'Work Sans', Arial";
-    const short = name.length > 14 ? name.split(' ')[0] : name;
-    ctx.fillText(short, 0, 0);
+    ctx.translate(center + Math.cos(mid)*startRadius, center + Math.sin(mid)*startRadius);
+    ctx.rotate(mid + Math.PI);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = textColor;
+
+    let fontSize = 24;
+    while (fontSize >= 11){
+      ctx.font = `bold ${fontSize}px 'Work Sans', Arial`;
+      if (ctx.measureText(name).width <= maxRunLength) break;
+      fontSize -= 1;
+    }
+    ctx.font = `bold ${fontSize}px 'Work Sans', Arial`;
+    ctx.fillText(name, 0, 0);
     ctx.restore();
   });
 
