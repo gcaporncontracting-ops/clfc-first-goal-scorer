@@ -242,41 +242,12 @@ export default {
     }
 
     // ---------- Participant reports they've paid (does NOT mark paid) ----------
+    // NOTE: email notification to admin was removed for now on request —
+    // this just records the report in the DB + audit log, silently.
     if (pathname.match(/^\/api\/entries\/[^/]+\/payment-reported$/) && request.method === "POST") {
       const entryId = pathname.split("/")[3];
       await env.DB.prepare(`UPDATE entries SET payment_reported_at = datetime('now') WHERE id = ?`).bind(entryId).run();
       await audit(env.DB, "payment_reported", { entity_id: entryId });
-
-      // Actually notify the admin by email — a DB timestamp alone isn't a
-      // real notification. Uses the same Web3Forms key already set up for
-      // the hub's suggestion box.
-      const row = await env.DB.prepare(
-        `SELECT e.id, e.entry_fee, p.full_name AS participant, pl.name AS player, g.grade
-         FROM entries e
-         JOIN participants p ON p.id = e.participant_id
-         JOIN players pl ON pl.id = e.player_id
-         JOIN games g ON g.id = e.game_id
-         WHERE e.id = ?`
-      ).bind(entryId).first();
-
-      if (row) {
-        try {
-          await fetch("https://api.web3forms.com/submit", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Accept: "application/json" },
-            body: JSON.stringify({
-              access_key: "a59f79b9-cb63-4cc8-ab40-7465fd609f14",
-              subject: "First Goal Scorer — payment reported",
-              from_name: "CLFC First Goal Scorer",
-              message: `${row.participant} reports they've paid $${row.entry_fee} for the ${row.grade} draw (picked ${row.player}). Entry ID: ${row.id}. Mark it paid via POST /api/admin/mark-paid once confirmed.`,
-            }),
-          });
-        } catch (e) {
-          // Email failure shouldn't block the participant's flow — the DB
-          // record and audit log entry above are already saved either way.
-        }
-      }
-
       return json({ ok: true, message: "Thanks — an admin will confirm your payment." });
     }
 
