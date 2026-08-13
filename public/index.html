@@ -276,9 +276,15 @@ async function renderGradeSpin(grade, gameId, session){
         btn.disabled = false; btn.textContent = "Spin the wheel";
         return;
       }
+      // Stop polling for the duration of the spin — the entry already
+      // exists server-side the instant the request above succeeds, so a
+      // poll firing mid-animation would leak the winner into the results
+      // table below before the wheel has visually stopped.
+      if (activePollInterval) { clearInterval(activePollInterval); activePollInterval = null; }
       await animateWheelTo(wheelOptions, data.player.name);
       renderResult(data);
       pollResults(gameId);
+      activePollInterval = setInterval(()=>pollResults(gameId), 6000);
     }catch(e){
       errBox.innerHTML = `<p class="error">Network error — try again.</p>`;
       btn.disabled = false; btn.textContent = "Spin the wheel";
@@ -401,9 +407,9 @@ function animateWheelTo(options, winnerName){
     const idx = Math.max(0, options.indexOf(winnerName));
     const slice = 360/options.length;
     const targetDeg = 270 - (idx*slice + slice/2);
-    const rotations = 6 + Math.floor(Math.random()*3);
+    const rotations = 10 + Math.floor(Math.random()*4);
     const finalDeg = wheelRotation + rotations*360 + ((targetDeg - (wheelRotation%360)) + 360)%360;
-    const start = performance.now(), duration = 4500, startDeg = wheelRotation;
+    const start = performance.now(), duration = 7500, startDeg = wheelRotation;
     function frame(t){
       const elapsed = t-start, progress = Math.min(elapsed/duration,1);
       const eased = 1 - Math.pow(1-progress,4);
