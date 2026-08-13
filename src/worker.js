@@ -9,7 +9,10 @@ const TESTING_MASTER_PIN = "0000";
 const ADMIN_PASSCODE = "clfcgoals2026";
 
 function json(data, status = 200) {
-  return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+  });
 }
 function uid() {
   return crypto.randomUUID();
@@ -405,7 +408,12 @@ export default {
     }
 
     // Serve Frontend
-    return new Response(INDEX_HTML_CONTENT, { headers: { "Content-Type": "text/html" } });
+    return new Response(INDEX_HTML_CONTENT, {
+      headers: {
+        "Content-Type": "text/html",
+        "Cache-Control": "no-cache, must-revalidate",
+      },
+    });
   }
 };
 
