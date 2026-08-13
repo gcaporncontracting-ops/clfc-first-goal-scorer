@@ -43,11 +43,12 @@
     box-shadow:0 18px 40px rgba(0,0,0,.35);
   }
   label{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy);margin:14px 0 6px;}
-  input[type=text],input[type=tel]{
+  input[type=text],input[type=tel],input[type=password],select{
     width:100%;font-size:17px;padding:12px 14px;border:1.5px solid var(--line);border-radius:10px;
-    background:#fff;color:var(--ink);letter-spacing:2px;text-align:center;
+    background:#fff;color:var(--ink);text-align:center;
   }
-  input#nameInput{letter-spacing:normal;text-align:left;font-size:16px;}
+  input[type=text],input[type=tel]{letter-spacing:2px;}
+  input#nameInput, input#playerSearch{letter-spacing:normal;text-align:left;font-size:16px;}
   button.primary{
     width:100%;margin-top:18px;font-family:'JetBrains Mono',monospace;font-weight:700;
     letter-spacing:.04em;text-transform:uppercase;background:var(--red);color:#fff;border:none;
@@ -102,16 +103,50 @@
   .back-link{
     display:inline-block;margin-top:18px;font-family:'JetBrains Mono',monospace;font-size:12px;
     color:rgba(255,255,255,.7);text-decoration:none;text-align:center;
+    cursor:pointer;
   }
   .center{text-align:center;}
+
+  /* Winner/Jackpot Styles */
+  .winner-banner{background:#1c7a3d;color:#fff;padding:12px;border-radius:10px;margin-bottom:16px;text-align:center;}
+  .jackpot-banner{background:var(--gold);color:var(--navy);padding:12px;border-radius:10px;margin-bottom:16px;text-align:center;}
+  .banner-title{font-family:'Anton',sans-serif;text-transform:uppercase;font-size:20px;margin-bottom:4px;}
+  .winner-row{background:#e8f5e9 !important;font-weight:700;}
+
+  /* Admin Styles */
+  .admin-login-link{
+    position:fixed;bottom:10px;right:10px;font-size:10px;color:rgba(255,255,255,.3);
+    text-decoration:none;font-family:'JetBrains Mono',monospace;
+  }
+  .admin-dashboard .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
+  .admin-dashboard .stat-card{background:#fff;padding:12px;border-radius:10px;text-align:center;border:1px solid var(--line);}
+  .admin-dashboard .stat-label{font-size:10px;text-transform:uppercase;color:#666;margin-bottom:4px;}
+  .admin-dashboard .stat-value{font-family:'Anton',sans-serif;font-size:18px;color:var(--navy);}
+  .player-select-wrap{position:relative;}
+  .player-results-list{
+    position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--line);
+    max-height:200px;overflow-y:auto;z-index:100;border-radius:0 0 10px 10px;display:none;
+  }
+  .player-result-item{padding:10px;cursor:pointer;border-bottom:1px solid var(--line);color:var(--ink);}
+  .player-result-item:hover{background:var(--paper);}
+  
+  .btn-toggle{
+    font-size:9px; padding:4px 8px; border-radius:6px; border:1px solid var(--line);
+    background:var(--paper); color:var(--navy); cursor:pointer; font-weight:700;
+    text-transform:uppercase; margin-top:4px; display:block;
+  }
+  .btn-toggle:hover{background:#eee;}
 </style>
 </head>
 <body>
 <div class="wrap" id="app"></div>
+<a href="#" class="admin-login-link" id="adminLoginLink">ADMIN</a>
 
 <script>
 const app = document.getElementById("app");
 const STORAGE_KEY = "clfc_fgs_session";
+const ADMIN_KEY = "clfc_fgs_admin_pass";
+let currentAdminGrade = "League";
 
 function heroHTML(sub){
   return `
@@ -166,13 +201,11 @@ function renderPinScreen(){
       if (!res.ok){ errBox.innerHTML = `<p class="error">${data.error}</p>`; btn.disabled = false; return; }
       setSession({ pin, voterSlug: data.voterSlug, fullName: data.fullName, testingMode: data.testingMode });
       if (data.fullName){
-        // Real PIN resolved a known identity — name is already known, skip straight to grade.
         const session = getSession();
         session.fullName = data.fullName;
         setSession(session);
         renderGradeSelect();
       } else {
-        // Testing PIN (0000) has no fixed identity — still ask for a name.
         renderNameScreen(data);
       }
     }catch(e){
@@ -246,6 +279,7 @@ async function renderGradeSpin(grade, gameId, session){
 
   app.innerHTML = `
     ${heroHTML(grade + " — spin to find your player")}
+    <div id="resultBannerArea"></div>
     <div class="card">
       <div class="spin-meta">
         <div><span>Your name</span><b>${session.fullName}</b></div>
@@ -262,7 +296,7 @@ async function renderGradeSpin(grade, gameId, session){
     </div>
     <div class="results-title">Live results — ${grade}</div>
     <table class="results" id="resultsTable"><tbody><tr><td class="muted">Loading...</td></tr></tbody></table>
-    <div class="center"><a class="back-link" href="javascript:void(0)" id="startOverLink">Start over</a></div>
+    <div class="center"><a class="back-link" id="startOverLink">Start over</a></div>
   `;
 
   document.getElementById("startOverLink").addEventListener("click", ()=>{
@@ -294,12 +328,13 @@ async function renderGradeSpin(grade, gameId, session){
         btn.disabled = false; btn.textContent = "Spin the wheel";
         return;
       }
-      // Stop polling for the duration of the spin — the entry already
-      // exists server-side the instant the request above succeeds, so a
-      // poll firing mid-animation would leak the winner into the results
-      // table below before the wheel has visually stopped.
       if (activePollInterval) { clearInterval(activePollInterval); activePollInterval = null; }
+      isSpinning = true;
       await animateWheelTo(wheelOptions, data.player.name);
+      
+      await new Promise(r => setTimeout(r, 800));
+      
+      isSpinning = false;
       renderResult(data);
       pollResults(gameId);
       activePollInterval = setInterval(()=>pollResults(gameId), 6000);
@@ -312,7 +347,8 @@ async function renderGradeSpin(grade, gameId, session){
 
 function renderResult(data){
   const box = document.getElementById("resultArea");
-  document.getElementById("spinBtn").style.display = "none";
+  const spinBtn = document.getElementById("spinBtn");
+  if (spinBtn) spinBtn.style.display = "none";
   box.innerHTML = `
     <div class="result-box">
       <div class="big-tick">✓</div>
@@ -325,18 +361,14 @@ function renderResult(data){
       <p>Please transfer $${data.entryFee} using PayID to:</p>
       <div class="payid">${data.payIdEmail}</div>
       <p class="muted" style="margin-top:8px;">Status: <strong style="color:var(--red);">Payment pending</strong> — an admin will confirm it.</p>
-      <button class="primary" id="paidBtn" style="background:var(--navy);box-shadow:0 6px 0 var(--navy-deep);margin-top:10px;">I've paid — notify admin</button>
-      <p id="paidMsg" class="muted"></p>
+      <button class="primary" id="paidBtn" style="background:var(--navy);box-shadow:0 6px 0 var(--navy-deep);margin-top:10px;">I've paid</button>
     </div>
   `;
   document.getElementById("paidBtn").addEventListener("click", async ()=>{
-    const msg = document.getElementById("paidMsg");
-    try{
-      await fetch(`/api/entries/${data.entryId}/payment-reported`, { method:"POST" });
-      msg.textContent = "Thanks — recorded. An admin will confirm shortly.";
-    }catch(e){
-      msg.textContent = "Could not notify — please tell an admin directly.";
-    }
+    const btn = document.getElementById("paidBtn");
+    btn.disabled = true; btn.textContent = "Reporting...";
+    await fetch(`/api/entries/${data.entryId}/payment-reported`, { method:"POST" });
+    btn.textContent = "Payment reported!";
   });
 }
 
@@ -346,29 +378,290 @@ async function pollResults(gameId){
     const data = await res.json();
     const table = document.getElementById("resultsTable");
     if (!table) return;
+    
     if (!data.entries || data.entries.length === 0){
-      table.innerHTML = `<tbody><tr><td class="muted">No spins yet — be the first!</td></tr></tbody>`;
+      table.innerHTML = `<tbody><tr><td class="muted">No entries yet. Be the first!</td></tr></tbody>`;
       return;
     }
+    
+    const bannerArea = document.getElementById("resultBannerArea");
+    if (bannerArea && data.gameResult) {
+      if (data.gameResult.is_jackpot) {
+        bannerArea.innerHTML = `
+          <div class="jackpot-banner">
+            <div class="banner-title">💰 JACKPOT</div>
+            <div>Nobody selected the first goal scorer.</div>
+            <div><strong>$${data.gameResult.carry_over_amount.toFixed(2)}</strong> jackpotted to next week.</div>
+          </div>
+        `;
+      } else {
+        bannerArea.innerHTML = `
+          <div class="winner-banner">
+            <div class="banner-title">🏆 WE HAVE A WINNER</div>
+            <div><strong>${data.gameResult.winner_name}</strong> won $${data.gameResult.total_prize_pool.toFixed(2)}</div>
+          </div>
+        `;
+      }
+    }
+
+    const session = getSession();
     table.innerHTML = `
       <thead><tr><th>Participant</th><th>Player</th><th>Payment</th></tr></thead>
       <tbody>
-        ${data.entries.map(e=>`
-          <tr>
-            <td>${e.participant}</td>
+        ${data.entries.filter(e => {
+          if (isSpinning && e.participant === session.fullName) return false;
+          return true;
+        }).map(e=>{
+          const isWinner = data.gameResult && !data.gameResult.is_jackpot && e.id === data.gameResult.winner_entry_id;
+          return `
+          <tr class="${isWinner ? 'winner-row' : ''}">
+            <td>${isWinner ? '🏆 ' : ''}${e.participant}${isWinner ? ' — WINNER' : ''}</td>
             <td>${e.player}</td>
-            <td><span class="${e.payment_status==='paid'?'pay-paid':'pay-pending'}">${e.payment_status}</span></td>
+            <td>
+              <span class="${e.payment_status==='paid'?'pay-paid':'pay-pending'}">${e.payment_status}</span>
+              ${isWinner ? `<div style="color:#1c7a3d; font-size:10px;">$${data.gameResult.total_prize_pool.toFixed(2)} WON</div>` : ''}
+            </td>
           </tr>
-        `).join("")}
+        `}).join("")}
       </tbody>
     `;
-  }catch(e){ /* silent — next poll will retry */ }
+  }catch(e){ console.error(e); }
 }
 
-// ---------------- Wheel drawing (matches club's wheel visual style) ----------------
+// ---------------- Admin Logic ----------------
+document.getElementById("adminLoginLink").addEventListener("click", (e)=>{
+  e.preventDefault();
+  renderAdminLogin();
+});
+
+function renderAdminLogin(){
+  app.innerHTML = `
+    ${heroHTML("Administrator Login")}
+    <div class="card">
+      <label for="adminPass">Admin Password</label>
+      <input type="password" id="adminPass" placeholder="••••••••">
+      <button class="primary" id="adminLoginBtn">Login</button>
+      <div id="adminError"></div>
+      <div class="center"><a class="back-link" id="adminBack">Back to App</a></div>
+    </div>
+  `;
+  document.getElementById("adminBack").addEventListener("click", main);
+  document.getElementById("adminLoginBtn").addEventListener("click", async ()=>{
+    const passcode = document.getElementById("adminPass").value;
+    const errBox = document.getElementById("adminError");
+    try {
+      const res = await fetch("/api/admin/auth", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ passcode })
+      });
+      if (res.ok) {
+        localStorage.setItem(ADMIN_KEY, passcode);
+        renderAdminDashboard();
+      } else {
+        errBox.innerHTML = `<p class="error">Invalid password</p>`;
+      }
+    } catch(e) {
+      errBox.innerHTML = `<p class="error">Network error</p>`;
+    }
+  });
+}
+
+async function renderAdminDashboard(grade = currentAdminGrade){
+  const passcode = localStorage.getItem(ADMIN_KEY);
+  if (!passcode) return renderAdminLogin();
+  currentAdminGrade = grade;
+  
+  app.innerHTML = `${heroHTML("Loading Dashboard...")}`;
+  
+  try {
+    const res = await fetch(`/api/admin/dashboard?passcode=${passcode}&grade=${grade}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    
+    const { game, players, entries, result } = data;
+    const grades = ["League","Reserves","Colts","Thirds"];
+    
+    app.innerHTML = `
+      ${heroHTML("Admin Dashboard")}
+      <div class="admin-dashboard">
+        <label>Select Grade</label>
+        <select id="adminGradeSelect" style="margin-bottom:16px;">
+          ${grades.map(g => `<option value="${g}" ${g === grade ? 'selected' : ''}>${g}</option>`).join("")}
+        </select>
+
+        <div class="stat-grid">
+          <div class="stat-card"><div class="stat-label">Week</div><div class="stat-value">Current</div></div>
+          <div class="stat-card"><div class="stat-label">Grade</div><div class="stat-value">${game.grade}</div></div>
+          <div class="stat-card"><div class="stat-label">Total Bets</div><div class="stat-value">${game.total_bets}</div></div>
+          <div class="stat-card"><div class="stat-label">Prize Pool</div><div class="stat-value">$${game.total_amount.toFixed(2)}</div></div>
+        </div>
+        
+        <div class="card">
+          <label>Status: <span style="color:var(--red)">${result ? 'RESULT CONFIRMED' : 'RESULT PENDING'}</span></label>
+          
+          ${result ? `
+            <div class="result-box" style="margin-top:0">
+              <div class="stat-label">Official First Goal Scorer</div>
+              <div class="player-name" style="font-size:24px">${result.player_name}</div>
+              <div class="stat-label">Outcome</div>
+              <div class="stat-value" style="color:${result.is_jackpot ? 'var(--gold)' : '#1c7a3d'}">
+                ${result.is_jackpot ? 'JACKPOT' : 'WINNER'}
+              </div>
+              ${!result.is_jackpot ? `<div class="stat-label">Winner: ${result.winner_name}</div>` : ''}
+              <div class="stat-label">Amount: $${(result.is_jackpot ? result.carry_over_amount : result.total_prize_pool).toFixed(2)}</div>
+            </div>
+          ` : `
+            <label>Enter First Goal Scorer</label>
+            <div class="player-select-wrap">
+              <input type="text" id="playerSearch" placeholder="Search player name...">
+              <div class="player-results-list" id="playerList"></div>
+            </div>
+            <input type="hidden" id="selectedPlayerId">
+            <button class="primary" id="confirmResultBtn" disabled>Confirm First Goal Scorer</button>
+          `}
+        </div>
+
+        <div class="results-title" style="margin-top:20px;">Manage Payments — ${game.grade}</div>
+        <table class="results">
+          <thead><tr><th>Participant</th><th>Player</th><th>Payment</th></tr></thead>
+          <tbody>
+            ${entries.map(e => `
+              <tr>
+                <td>${e.participant}</td>
+                <td>${e.player}</td>
+                <td>
+                  <span class="${e.payment_status==='paid'?'pay-paid':'pay-pending'}">${e.payment_status}</span>
+                  <button class="btn-toggle" data-id="${e.id}" data-status="${e.payment_status}">
+                    Mark as ${e.payment_status === 'paid' ? 'PENDING' : 'PAID'}
+                  </button>
+                </td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+        
+        <div class="center" style="margin-top:20px;"><a class="back-link" id="adminLogout" style="color:var(--navy)">Logout</a></div>
+      </div>
+    `;
+    
+    document.getElementById("adminGradeSelect").addEventListener("change", (e) => {
+      renderAdminDashboard(e.target.value);
+    });
+
+    document.querySelectorAll(".btn-toggle").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const entryId = btn.dataset.id;
+        const currentStatus = btn.dataset.status;
+        const newStatus = currentStatus === 'paid' ? 'pending' : 'paid';
+        btn.disabled = true;
+        btn.textContent = "Updating...";
+        
+        try {
+          const res = await fetch("/api/admin/toggle-payment", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ passcode, entryId, status: newStatus })
+          });
+          if (res.ok) {
+            renderAdminDashboard(grade);
+          } else {
+            alert("Failed to update payment status");
+            btn.disabled = false;
+            btn.textContent = `Mark as ${newStatus.toUpperCase()}`;
+          }
+        } catch(e) {
+          alert("Network error");
+          btn.disabled = false;
+        }
+      });
+    });
+
+    document.getElementById("adminLogout").addEventListener("click", ()=>{
+      localStorage.removeItem(ADMIN_KEY);
+      main();
+    });
+    
+    if (!result) {
+      const searchInput = document.getElementById("playerSearch");
+      const list = document.getElementById("playerList");
+      const confirmBtn = document.getElementById("confirmResultBtn");
+      const idInput = document.getElementById("selectedPlayerId");
+      
+      searchInput.addEventListener("input", ()=>{
+        const val = searchInput.value.toLowerCase();
+        const matches = players.filter(p => p.name.toLowerCase().includes(val));
+        if (val && matches.length > 0) {
+          list.innerHTML = matches.map(p => `<div class="player-result-item" data-id="${p.id}">${p.name}</div>`).join("");
+          list.style.display = "block";
+        } else {
+          list.style.display = "none";
+        }
+      });
+      
+      list.addEventListener("click", (e)=>{
+        if (e.target.classList.contains("player-result-item")) {
+          searchInput.value = e.target.textContent;
+          idInput.value = e.target.dataset.id;
+          list.style.display = "none";
+          confirmBtn.disabled = false;
+        }
+      });
+      
+      confirmBtn.addEventListener("click", ()=>{
+        renderConfirmScreen(game, searchInput.value, idInput.value);
+      });
+    }
+    
+  } catch(e) {
+    app.innerHTML = `<div class="card"><p class="error">${e.message}</p><div class="center"><a class="back-link" onclick="location.reload()">Retry</a></div></div>`;
+  }
+}
+
+function renderConfirmScreen(game, playerName, playerId){
+  app.innerHTML = `
+    ${heroHTML("Confirm Result")}
+    <div class="card center">
+      <p>You are about to confirm:</p>
+      <div class="stat-label">First Goal Scorer</div>
+      <div class="player-name" style="font-size:28px">${playerName}</div>
+      <p>Are you sure this is the official first goal scorer?</p>
+      <button class="primary" id="finalConfirmBtn">Confirm Result</button>
+      <button class="primary" id="cancelConfirmBtn" style="background:#666;box-shadow:0 6px 0 #444">Cancel</button>
+    </div>
+  `;
+  
+  document.getElementById("cancelConfirmBtn").addEventListener("click", () => renderAdminDashboard(game.grade));
+  document.getElementById("finalConfirmBtn").addEventListener("click", async ()=>{
+    const btn = document.getElementById("finalConfirmBtn");
+    btn.disabled = true; btn.textContent = "Processing...";
+    const passcode = localStorage.getItem(ADMIN_KEY);
+    
+    try {
+      const res = await fetch("/api/admin/confirm-result", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ passcode, gameId: game.id, playerId })
+      });
+      if (res.ok) {
+        renderAdminDashboard(game.grade);
+      } else {
+        const data = await res.json();
+        alert(data.error || "Error confirming result");
+        btn.disabled = false; btn.textContent = "Confirm Result";
+      }
+    } catch(e) {
+      alert("Network error");
+      btn.disabled = false; btn.textContent = "Confirm Result";
+    }
+  });
+}
+
+// ---------------- Wheel drawing ----------------
 const wheelColors = ['#d62828', '#ffffff', '#1d4fd8'];
 let wheelRotation = 0;
 let activePollInterval = null;
+let isSpinning = false;
 
 function drawWheel(options){
   const canvas = document.getElementById("wheelCanvas");
@@ -389,10 +682,6 @@ function drawWheel(options){
 
     const textColor = bg === '#ffffff' ? '#132a6e' : '#ffffff';
     const mid = start + slice/2;
-
-    // Start near the outer rim and run the full name inward toward the
-    // hub — text stays upright relative to that radial line (not curved
-    // along the rim), so it reads left-to-right as it travels inward.
     const startRadius = radius - 16;
     const innerLimit = hubRadius + 12;
     const maxRunLength = startRadius - innerLimit;

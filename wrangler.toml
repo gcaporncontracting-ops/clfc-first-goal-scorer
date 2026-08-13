@@ -17,3 +17,10 @@ database_id = "050e6010-0ba6-400f-a64d-30b3f1168b78"
 [[kv_namespaces]]
 binding = "VOTES_KV"
 id = "5484efe25986416ca14a9072c6b841dd"
+
+# Automated PlayHQ sync every Saturday at 6:00 AM AWST (22:00 UTC Friday)
+[triggers]
+crons = ["0 22 * * 5"]
+
+[vars]
+PLAYHQ_API_KEY = "ENTER_YOUR_API_KEY_HERE"
