@@ -79,10 +79,16 @@ export async function syncSaturdayGames(env) {
         .bind(grade, `${todayStr}%`).first();
 
       let internalGameId;
+      // Sunday 12pm deadline (next day 12:00:00)
+      const sundayDeadline = new Date(todayStr);
+      sundayDeadline.setDate(sundayDeadline.getDate() + 1);
+      sundayDeadline.setHours(12, 0, 0, 0);
+      const deadlineISO = sundayDeadline.toISOString();
+
       if (existingGame) {
         internalGameId = existingGame.id;
-        await env.DB.prepare(`UPDATE games SET away_team = ?, game_date_time = ?, status = 'open' WHERE id = ?`)
-          .bind(opposingTeam, gameDateTime, internalGameId).run();
+        await env.DB.prepare(`UPDATE games SET away_team = ?, game_date_time = ?, payment_deadline_at = ?, status = 'open' WHERE id = ?`)
+          .bind(opposingTeam, gameDateTime, deadlineISO, internalGameId).run();
       } else {
         internalGameId = crypto.randomUUID();
         // Carry over jackpot
@@ -92,8 +98,8 @@ export async function syncSaturdayGames(env) {
         const startingJackpot = lastGame ? lastGame.carry_over_amount : 0;
 
         await env.DB.prepare(
-          `INSERT INTO games (id, grade, home_team, away_team, game_date_time, status, is_mock, starting_jackpot) VALUES (?, ?, 'Cockburn Lakes', ?, ?, 'open', 0, ?)`
-        ).bind(internalGameId, grade, opposingTeam, gameDateTime, startingJackpot).run();
+          `INSERT INTO games (id, grade, home_team, away_team, game_date_time, payment_deadline_at, status, is_mock, starting_jackpot) VALUES (?, ?, 'Cockburn Lakes', ?, ?, ?, 'open', 0, ?)`
+        ).bind(internalGameId, grade, opposingTeam, gameDateTime, deadlineISO, startingJackpot).run();
       }
 
       // 4. Update players roster

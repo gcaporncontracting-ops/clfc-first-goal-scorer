@@ -79,6 +79,7 @@ import { syncSaturdayGames } from "./playhq_sync.js";
 
 export default {
   async scheduled(event, env, ctx) {
+    // This runs on the schedule defined in wrangler.toml (8:00 AM and 9:30 AM AWST)
     ctx.waitUntil(syncSaturdayGames(env));
   },
 
@@ -103,6 +104,35 @@ export default {
       return json({ ok: true, testingMode: false, voterSlug, fullName });
     }
 
+    if (pathname === "/api/games/check-spin" && request.method === "GET") {
+      const grade = url.searchParams.get("grade");
+      const voterSlug = url.searchParams.get("voterSlug");
+      const fullName = url.searchParams.get("fullName");
+      
+      if (!grade) return json({ error: "Grade required" }, 400);
+
+      const game = await env.DB.prepare(
+        `SELECT id FROM games WHERE grade = ? AND status != 'closed' ORDER BY created_at DESC LIMIT 1`
+      ).bind(grade).first();
+      
+      if (!game) return json({ hasSpun: false });
+
+      let hasSpun = false;
+      if (voterSlug) {
+        const entry = await env.DB.prepare(
+          `SELECT e.id FROM entries e JOIN participants p ON p.id = e.participant_id WHERE e.game_id = ? AND p.voter_slug = ?`
+        ).bind(game.id, voterSlug).first();
+        hasSpun = !!entry;
+      } else if (fullName) {
+        const entry = await env.DB.prepare(
+          `SELECT e.id FROM entries e JOIN participants p ON p.id = e.participant_id WHERE e.game_id = ? AND p.full_name = ?`
+        ).bind(game.id, fullName).first();
+        hasSpun = !!entry;
+      }
+
+      return json({ hasSpun });
+    }
+
     if (pathname === "/api/games/current" && request.method === "GET") {
       const grade = url.searchParams.get("grade");
       if (!grade || !ACTIVE_GRADES.includes(grade)) return json({ error: "Unknown grade" }, 400);
@@ -118,6 +148,10 @@ export default {
             game.status = 'locked';
           }
         }
+
+        // Calculate current prize pool (including starting jackpot)
+        const entries = await env.DB.prepare(`SELECT COUNT(*) as count FROM entries WHERE game_id = ?`).bind(game.id).first();
+        game.final_prize_pool = (entries.count * ENTRY_FEE) + (game.starting_jackpot || 0);
         
         return json({ game });
       } catch (e) {
@@ -268,6 +302,22 @@ export default {
       const passcode = url.searchParams.get("passcode");
       const grade = url.searchParams.get("grade");
       if (passcode !== ADMIN_PASSCODE) return json({ error: "Invalid passcode" }, 401);
+
+      // Check for games past deadline that are still 'locked' (result set but winner hasn't paid)
+      const expiredGames = await env.DB.prepare(
+        `SELECT g.id, g.grade, gr.total_prize_pool 
+         FROM games g 
+         JOIN game_results gr ON g.id = gr.game_id 
+         WHERE g.status = 'locked' AND g.payment_deadline_at < datetime('now') 
+         AND gr.is_jackpot = 0 AND (SELECT payment_status FROM entries WHERE id = gr.winner_entry_id) = 'pending'`
+      ).all();
+
+      for (const g of expiredGames.results || []) {
+        // Jackpot it!
+        await env.DB.prepare(`UPDATE game_results SET is_jackpot = 1, carry_over_amount = total_prize_pool WHERE game_id = ?`).bind(g.id).run();
+        await env.DB.prepare(`UPDATE games SET result_status = 'jackpot' WHERE id = ?`).bind(g.id).run();
+        await audit(env.DB, "deadline_jackpot", { game_id: g.id, metadata: { reason: "payment_deadline_expired" } });
+      }
 
       let query = `
         SELECT g.*, 
