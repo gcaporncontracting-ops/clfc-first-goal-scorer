@@ -56,7 +56,6 @@ async function getOrCreateCurrentGame(env, grade) {
   ).bind(grade).first();
   const startingJackpot = lastGame ? lastGame.carry_over_amount : 0;
 
-  // Default deadline: next Sunday 12:00 PM
   const now = new Date();
   const sunday = new Date(now);
   sunday.setDate(now.getDate() + (7 - now.getDay()) % 7);
@@ -293,7 +292,6 @@ export default {
       const grade = url.searchParams.get("grade");
       if (passcode !== ADMIN_PASSCODE) return json({ error: "Invalid passcode" }, 401);
 
-      // Sunday 12pm Jackpot logic
       const expiredGames = await env.DB.prepare(
         `SELECT g.id, g.grade, gr.total_prize_pool 
          FROM games g 
@@ -411,4 +409,636 @@ export default {
   }
 };
 
-const INDEX_HTML_CONTENT = REPLACE_ME;
+const INDEX_HTML_CONTENT = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CLFC First Goal Scorer</title>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=JetBrains+Mono:wght@400;600;700&family=Work+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#132a6e; --navy-deep:#0b1c4d; --red:#d62828; --blue:#1d4fd8; --gold:#f2b134;
+    --ink:#14161c; --paper:#f6f3ec; --line:rgba(20,22,28,.14);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:'Work Sans', sans-serif; color:#fff; min-height:100vh;
+    background:linear-gradient(180deg, var(--navy-deep) 0%, #0d234f 40%, #123267 100%);
+  }
+  .wrap{max-width:520px;margin:0 auto;padding:24px 18px 60px;}
+  .eyebrow{
+    font-family:'JetBrains Mono',monospace;letter-spacing:.2em;text-transform:uppercase;
+    font-size:11px;color:var(--gold);text-align:center;margin:0 0 6px;
+  }
+  h1.title{
+    font-family:'Anton',sans-serif;text-transform:uppercase;text-align:center;
+    font-size:clamp(26px,7vw,38px);margin:0 0 6px;line-height:1;
+  }
+  .subtitle{text-align:center;font-size:13.5px;color:rgba(255,255,255,.75);margin:0 0 26px;}
+  .info-banner{
+    background:#fffbeb;border:2px solid var(--gold);border-radius:14px;
+    padding:16px 16px;margin-bottom:16px;color:var(--ink);
+  }
+  .info-banner-title{
+    font-family:'JetBrains Mono',monospace;font-weight:800;letter-spacing:.04em;text-transform:uppercase;
+    font-size:12px;color:#92400e;margin-bottom:8px;
+  }
+  .info-banner p{margin:0 0 8px;font-size:13px;line-height:1.5;color:#3a3320;}
+  .info-banner p:last-child{margin-bottom:0;}
+  .info-banner strong{color:var(--navy);}
+
+  .card{
+    background:var(--paper);border-radius:16px;padding:24px 20px;color:var(--ink);
+    box-shadow:0 18px 40px rgba(0,0,0,.35);
+  }
+  label{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy);margin:14px 0 6px;}
+  input[type=text],input[type=tel],input[type=password],select{
+    width:100%;font-size:17px;padding:12px 14px;border:1.5px solid var(--line);border-radius:10px;
+    background:#fff;color:var(--ink);text-align:center;
+  }
+  input[type=text],input[type=tel]{letter-spacing:2px;}
+  input#nameInput, input#playerSearch{letter-spacing:normal;text-align:left;font-size:16px;}
+  button.primary{
+    width:100%;margin-top:18px;font-family:'JetBrains Mono',monospace;font-weight:700;
+    letter-spacing:.04em;text-transform:uppercase;background:var(--red);color:#fff;border:none;
+    border-radius:10px;padding:14px;font-size:14.5px;cursor:pointer;box-shadow:0 6px 0 #9c1c1c;
+  }
+  button.primary:active{transform:translateY(3px);box-shadow:0 3px 0 #9c1c1c;}
+  button.primary:disabled{opacity:.5;cursor:not-allowed;}
+  .error{color:var(--red);font-size:13.5px;font-weight:600;margin-top:12px;text-align:center;}
+  .muted{color:#5a5a5a;font-size:13px;text-align:center;margin-top:10px;}
+
+  .grade-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;}
+  .grade-btn{
+    background:var(--navy);color:#fff;border:none;border-radius:12px;padding:20px 10px;
+    font-family:'Anton',sans-serif;text-transform:uppercase;font-size:17px;cursor:pointer;
+  }
+  .grade-btn:active{transform:scale(.97);}
+  .grade-btn:disabled{background:#ccc;opacity:0.6;cursor:not-allowed;}
+
+  .spin-meta{background:#fff;border:1.5px solid var(--line);border-radius:10px;padding:12px 14px;margin:14px 0;font-size:14px;}
+  .spin-meta div{display:flex;justify-content:space-between;padding:3px 0;}
+  .spin-meta b{color:var(--navy);}
+
+  .wheel-wrap{position:relative;width:min(84vw,340px);aspect-ratio:1;margin:20px auto 0;}
+  .wheel-wrap canvas{width:100%;height:100%;border-radius:50%;box-shadow:0 0 0 6px var(--navy),0 12px 30px rgba(0,0,0,.35);}
+  .wheel-wrap .pointer{
+    position:absolute;top:-16px;left:50%;transform:translateX(-50%);width:0;height:0;
+    border-left:16px solid transparent;border-right:16px solid transparent;border-top:30px solid var(--red);
+    z-index:5;filter:drop-shadow(0 3px 3px rgba(0,0,0,.4));
+  }
+
+  .result-box{text-align:center;margin-top:20px;}
+  .result-box .big-tick{font-size:44px;color:#1c7a3d;}
+  .result-box h2{font-family:'Anton',sans-serif;text-transform:uppercase;margin:6px 0 4px;font-size:22px;color:var(--navy);}
+  .result-box .player-name{font-family:'Anton',sans-serif;text-transform:uppercase;font-size:30px;color:var(--red);margin:6px 0 14px;}
+  .final-note{font-size:12.5px;color:#8a8370;font-style:italic;margin-top:10px;}
+
+  .pay-box{background:var(--paper);border:2px solid var(--gold);border-radius:12px;padding:16px;margin-top:16px;}
+  .pay-box h3{margin:0 0 8px;font-family:'Anton',sans-serif;text-transform:uppercase;font-size:16px;color:var(--navy);}
+  .pay-box .payid{font-family:'JetBrains Mono',monospace;font-size:15px;background:#fff;padding:8px 10px;border-radius:8px;display:inline-block;margin:6px 0;}
+
+  .results-title{
+    font-family:'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;
+    font-size:12px;color:rgba(255,255,255,.7);margin:26px 0 10px;text-align:center;
+  }
+  table.results{width:100%;border-collapse:collapse;background:#fff;border-radius:10px;overflow:hidden;font-size:13px;color:var(--ink);}
+  table.results th{
+    text-align:left;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;
+    color:#6b6455;border-bottom:2px solid var(--navy);padding:8px 8px;background:var(--paper);
+  }
+  table.results td{padding:8px;border-bottom:1px solid var(--line);}
+  .pay-pending{color:var(--red);font-weight:700;font-size:11px;text-transform:uppercase;}
+  .pay-paid{color:#1c7a3d;font-weight:700;font-size:11px;text-transform:uppercase;}
+  .back-link{
+    display:inline-block;margin-top:18px;font-family:'JetBrains Mono',monospace;font-size:12px;
+    color:rgba(255,255,255,.7);text-decoration:none;text-align:center;
+    cursor:pointer;
+  }
+  .center{text-align:center;}
+
+  /* Winner/Jackpot Styles */
+  .winner-banner{background:#1c7a3d;color:#fff;padding:12px;border-radius:10px;margin-bottom:16px;text-align:center;}
+  .jackpot-banner{background:var(--gold);color:var(--navy);padding:12px;border-radius:10px;margin-bottom:16px;text-align:center;}
+  .banner-title{font-family:'Anton',sans-serif;text-transform:uppercase;font-size:20px;margin-bottom:4px;}
+  .winner-row{background:#e8f5e9 !important;font-weight:700;}
+  
+  .locked-icon{font-size:40px;margin-bottom:10px;}
+  .win-amount{font-family:'Anton',sans-serif;font-size:32px;color:var(--gold);margin:10px 0;}
+
+  /* Admin Styles */
+  .admin-login-link{
+    position:fixed;bottom:10px;right:10px;font-size:10px;color:rgba(255,255,255,.3);
+    text-decoration:none;font-family:'JetBrains Mono',monospace;
+  }
+  .admin-dashboard .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
+  .admin-dashboard .stat-card{background:#fff;padding:12px;border-radius:10px;text-align:center;border:1px solid var(--line);}
+  .admin-dashboard .stat-label{font-size:10px;text-transform:uppercase;color:#666;margin-bottom:4px;}
+  .admin-dashboard .stat-value{font-family:'Anton',sans-serif;font-size:18px;color:var(--navy);}
+  .player-select-wrap{position:relative;}
+  .player-results-list{
+    position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--line);
+    max-height:200px;overflow-y:auto;z-index:100;border-radius:0 0 10px 10px;display:none;
+  }
+  .player-result-item{padding:10px;cursor:pointer;border-bottom:1px solid var(--line);color:var(--ink);}
+  .player-result-item:hover{background:var(--paper);}
+  
+  .btn-toggle{
+    font-size:9px; padding:4px 8px; border-radius:6px; border:1px solid var(--line);
+    background:var(--paper); color:var(--navy); cursor:pointer; font-weight:700;
+    text-transform:uppercase; margin-top:4px; display:block;
+  }
+  .btn-toggle:hover{background:#eee;}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<a href="#" class="admin-login-link" id="adminLoginLink">ADMIN</a>
+
+<script>
+const app = document.getElementById("app");
+const STORAGE_KEY = "clfc_fgs_session";
+const ADMIN_KEY = "clfc_fgs_admin_pass";
+let currentAdminGrade = "League";
+let activePollInterval = null;
+
+function heroHTML(sub){
+  return `
+    <p class="eyebrow">Cockburn Lakes F.C.</p>
+    <h1 class="title">First Goal Scorer</h1>
+    <p class="subtitle">${sub}</p>
+  `;
+}
+
+function getSession(){
+  try{ return JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "null"); }catch(e){ return null; }
+}
+function setSession(s){ sessionStorage.setItem(STORAGE_KEY, JSON.stringify(s)); }
+
+async function main(){
+  const session = getSession();
+  if (session && session.grade && session.gameId){
+    renderGradeSpin(session.grade, session.gameId, session);
+    return;
+  }
+  renderPinScreen();
+}
+
+// ---------------- Step 1: PIN ----------------
+function renderPinScreen(){
+  app.innerHTML = `
+    ${heroHTML("Enter your PIN to get started")}
+    <div class="info-banner">
+      <div class="info-banner-title">⚠ Testing mode</div>
+      <p>The PIN is currently <strong>0000</strong> for testing. In future, your PIN will be the same one you use for Player's Player voting and for this app.</p>
+      <p>You get <strong>1 spin per grade</strong>. After spinning, you're locked out of that grade until the next round opens.</p>
+      <p>Any <strong>unpaid entry locks you out</strong> of all future spins until an admin confirms your payment.</p>
+    </div>
+    <div class="card">
+      <label for="pinInput">Your PIN</label>
+      <input type="tel" id="pinInput" inputmode="numeric" maxlength="4" placeholder="••••">
+      <button class="primary" id="pinBtn">Continue</button>
+      <div id="pinError"></div>
+    </div>
+  `;
+  const btn = document.getElementById("pinBtn");
+  btn.addEventListener("click", async ()=>{
+    const pin = document.getElementById("pinInput").value.trim();
+    const errBox = document.getElementById("pinError");
+    errBox.innerHTML = "";
+    if (!/^\d{4}$/.test(pin)){ errBox.innerHTML = `<p class="error">Enter a 4-digit PIN.</p>`; return; }
+    btn.disabled = true;
+    try{
+      const res = await fetch("/api/auth/pin", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ pin }) });
+      const data = await res.json();
+      if (!res.ok){ errBox.innerHTML = `<p class="error">${data.error}</p>`; btn.disabled = false; return; }
+      setSession({ pin, voterSlug: data.voterSlug, fullName: data.fullName, testingMode: data.testingMode });
+      if (data.fullName){
+        const session = getSession();
+        session.fullName = data.fullName;
+        setSession(session);
+        renderGradeSelect();
+      } else {
+        renderNameScreen(data);
+      }
+    }catch(e){
+      errBox.innerHTML = `<p class="error">Network error — try again.</p>`;
+      btn.disabled = false;
+    }
+  });
+}
+
+// ---------------- Step 2: name ----------------
+function renderNameScreen(auth){
+  const known = !!auth.fullName;
+  app.innerHTML = `
+    ${heroHTML("Your Name")}
+    <div class="info-banner">
+      <div class="info-banner-title">Testing Phase Info</div>
+      <p>In future, only your PIN will be required as it will be linked to your name.</p>
+    </div>
+    <div class="card">
+      <label for="nameInput">Full name</label>
+      <input type="text" id="nameInput" value="${known ? auth.fullName : ""}" placeholder="Your full name">
+      <button class="primary" id="nameBtn">Continue</button>
+      <div id="nameError"></div>
+    </div>
+  `;
+  document.getElementById("nameBtn").addEventListener("click", ()=>{
+    const name = document.getElementById("nameInput").value.trim();
+    const errBox = document.getElementById("nameError");
+    if (!name){ errBox.innerHTML = `<p class="error">Name can't be blank.</p>`; return; }
+    const session = getSession();
+    session.fullName = name;
+    setSession(session);
+    renderGradeSelect();
+  });
+}
+
+// ---------------- Step 3: grade ----------------
+async function renderGradeSelect(){
+  const grades = ["League","Reserves","Colts","Thirds"];
+  const session = getSession();
+  
+  app.innerHTML = `
+    ${heroHTML("Pick your grade")}
+    <div class="card">
+      <div class="grade-grid">
+        ${grades.map(g=>`<button class="grade-btn" id="btn-${g}" data-grade="${g}">${g}</button>`).join("")}
+      </div>
+      <p class="muted" id="gradeStatus"></p>
+    </div>
+  `;
+  
+  // Check spin status for each grade
+  for(const g of grades) {
+    try {
+        const res = await fetch(`/api/games/check-spin?grade=${g}&voterSlug=${session.voterSlug || ""}&fullName=${session.fullName || ""}`);
+        const data = await res.json();
+        if (data.hasSpun) {
+            const btn = document.getElementById(`btn-${g}`);
+            btn.disabled = true;
+            btn.innerHTML += "<br><span style='font-size:10px;'>SPUN</span>";
+        }
+    } catch(e) {}
+  }
+
+  document.querySelectorAll(".grade-btn").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      if(btn.disabled) return;
+      const grade = btn.dataset.grade;
+      const statusEl = document.getElementById("gradeStatus");
+      statusEl.textContent = "Loading players...";
+      try{
+        const res = await fetch(`/api/games/current?grade=${grade}`);
+        const data = await res.json();
+        if (!res.ok){ statusEl.textContent = data.error; return; }
+        const session = getSession();
+        session.grade = grade;
+        session.gameId = data.game.id;
+        setSession(session);
+        renderGradeSpin(grade, data.game.id, session);
+      }catch(e){
+        statusEl.textContent = "Network error — try again.";
+      }
+    });
+  });
+}
+
+// ---------------- Step 4: wheel + spin ----------------
+async function renderGradeSpin(grade, gameId, session){
+  app.innerHTML = `${heroHTML("Loading wheel...")}`;
+  const playersRes = await fetch(`/api/games/${gameId}/players`).then(r=>r.json());
+  const players = playersRes.players || [];
+  
+  const gameRes = await fetch(`/api/games/current?grade=${grade}`).then(r=>r.json());
+  const game = gameRes.game;
+  const isLocked = game.status === 'locked';
+
+  app.innerHTML = `
+    ${heroHTML(grade + (isLocked ? " — Locked" : " — spin to find your player"))}
+    <div id="resultBannerArea"></div>
+    <div class="card">
+      ${isLocked ? `
+        <div class="center">
+          <div class="locked-icon">🔒</div>
+          <h2>Game Locked</h2>
+          <div class="win-amount">TO WIN: $${(game.final_prize_pool || 0).toFixed(2)}</div>
+        </div>
+      ` : `
+        <div class="spin-meta">
+          <div><span>Your name</span><b>${session.fullName}</b></div>
+          <div><span>Grade</span><b>${grade}</b></div>
+          <div><span>Players remaining</span><b id="playersRemaining">${players.length}</b></div>
+        </div>
+        <div class="wheel-wrap">
+          <div class="pointer"></div>
+          <canvas id="wheelCanvas"></canvas>
+        </div>
+        <button class="primary" id="spinBtn" style="margin-top:20px;">Spin the wheel</button>
+      `}
+      <div id="spinError"></div>
+      <div id="resultArea"></div>
+    </div>
+    <div class="results-title">Live results — ${grade}</div>
+    <table class="results" id="resultsTable"><tbody><tr><td class="muted">Loading...</td></tr></tbody></table>
+    <div class="center"><a class="back-link" id="startOverLink">Start over</a></div>
+  `;
+
+  document.getElementById("startOverLink").addEventListener("click", ()=>{
+    if (activePollInterval) clearInterval(activePollInterval);
+    sessionStorage.removeItem(STORAGE_KEY);
+    main();
+  });
+
+  if (!isLocked) {
+    let wheelOptions = players.map(p=>p.name);
+    drawWheel(wheelOptions);
+    
+    document.getElementById("spinBtn").addEventListener("click", async ()=>{
+      const btn = document.getElementById("spinBtn");
+      const errBox = document.getElementById("spinError");
+      btn.disabled = true;
+      errBox.innerHTML = "";
+      btn.textContent = "Spinning...";
+      try{
+        const res = await fetch(`/api/games/${gameId}/entries`, {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ fullName: session.fullName, voterSlug: session.voterSlug, pin: session.pin })
+        });
+        const data = await res.json();
+        if (!res.ok){ errBox.innerHTML = `<p class="error">${data.error}</p>`; btn.textContent = "Spin the wheel"; btn.disabled = false; return; }
+        
+        const targetPlayer = data.player.name;
+        const targetIndex = wheelOptions.indexOf(targetPlayer);
+        
+        await spinWheel(targetIndex, wheelOptions.length);
+        
+        setTimeout(() => {
+          renderResult(data);
+          pollResults(gameId);
+        }, 800);
+      }catch(e){
+        errBox.innerHTML = `<p class="error">Network error — try again.</p>`;
+        btn.textContent = "Spin the wheel";
+        btn.disabled = false;
+      }
+    });
+  }
+
+  pollResults(gameId);
+  if (activePollInterval) clearInterval(activePollInterval);
+  activePollInterval = setInterval(()=>pollResults(gameId), 6000);
+}
+
+function renderResult(data){
+  const area = document.getElementById("resultArea");
+  area.innerHTML = `
+    <div class="result-box">
+      <div class="big-tick">✓</div>
+      <h2>You got</h2>
+      <div class="player-name">${data.player.name}</div>
+      <div class="pay-box">
+        <h3>To confirm entry, Pay $${data.entryFee}</h3>
+        <p>Pay via PayID to:</p>
+        <div class="payid">${data.payIdEmail}</div>
+        <p>Use <strong>${data.player.name}</strong> as reference.</p>
+        <button class="primary" id="paidBtn" style="background:var(--blue);box-shadow:0 6px 0 #123597;">I've Paid</button>
+      </div>
+      <p class="final-note">${data.message}</p>
+    </div>
+  `;
+  document.getElementById("paidBtn").addEventListener("click", async ()=>{
+    const btn = document.getElementById("paidBtn");
+    btn.disabled = true;
+    btn.textContent = "Reporting...";
+    await fetch(`/api/entries/${data.entryId}/payment-reported`, { method:"POST" });
+    btn.textContent = "Reported!";
+    btn.style.background = "#1c7a3d";
+    btn.style.boxShadow = "0 6px 0 #114d26";
+  });
+}
+
+async function pollResults(gameId){
+  try{
+    const res = await fetch(`/api/games/${gameId}/entries`);
+    const data = await res.json();
+    const table = document.getElementById("resultsTable");
+    const bannerArea = document.getElementById("resultBannerArea");
+    
+    if (data.gameResult){
+      if (data.gameResult.is_jackpot){
+        bannerArea.innerHTML = `<div class="jackpot-banner"><div class="banner-title">JACKPOT!</div>No one picked the winner. $${data.gameResult.carry_over_amount.toFixed(2)} carries over.</div>`;
+      } else {
+        bannerArea.innerHTML = `<div class="winner-banner"><div class="banner-title">WINNER!</div>${data.gameResult.winner_name} wins with ${data.gameResult.player_name}!</div>`;
+      }
+    } else {
+      bannerArea.innerHTML = "";
+    }
+
+    if (!data.entries || data.entries.length === 0){
+      table.innerHTML = `<tbody><tr><td class="muted">No entries yet.</td></tr></tbody>`;
+      return;
+    }
+
+    let html = `<thead><tr><th>Participant</th><th>Player</th><th>Payment</th></tr></thead><tbody>`;
+    data.entries.forEach(e=>{
+      const isWinner = data.gameResult && e.id === data.gameResult.winner_entry_id;
+      html += `<tr class="${isWinner ? 'winner-row' : ''}">
+        <td>${e.participant}</td>
+        <td>${e.player}</td>
+        <td><span class="pay-${e.payment_status}">${e.payment_status}</span></td>
+      </tr>`;
+    });
+    html += `</tbody>`;
+    table.innerHTML = html;
+  }catch(e){}
+}
+
+let wheelRotation = 0;
+function drawWheel(options){
+  const canvas = document.getElementById("wheelCanvas");
+  if (!canvas) return;
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width = 800, h = canvas.height = 800;
+  const cx = w/2, cy = h/2, rad = w/2 - 10;
+  const slice = (Math.PI*2)/options.length;
+
+  ctx.clearRect(0,0,w,h);
+  options.forEach((opt, i)=>{
+    const ang = i*slice;
+    ctx.beginPath();
+    ctx.fillStyle = i%2===0 ? "#132a6e" : "#1d4fd8";
+    ctx.moveTo(cx,cy);
+    ctx.arc(cx,cy,rad,ang,ang+slice);
+    ctx.fill();
+
+    ctx.save();
+    ctx.translate(cx,cy);
+    ctx.rotate(ang + slice/2);
+    ctx.textAlign = "right";
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 24px 'JetBrains Mono'";
+    ctx.fillText(opt, rad-30, 8);
+    ctx.restore();
+  });
+}
+
+function spinWheel(targetIndex, totalOptions){
+  return new Promise(resolve=>{
+    const canvas = document.getElementById("wheelCanvas");
+    const sliceDeg = 360 / totalOptions;
+    const targetDeg = 360 - (targetIndex * sliceDeg) - (sliceDeg/2);
+    const rotations = 10 + Math.floor(Math.random()*4);
+    const finalDeg = wheelRotation + rotations*360 + ((targetDeg - (wheelRotation%360)) + 360)%360;
+    const start = performance.now(), duration = 7500, startDeg = wheelRotation;
+    function frame(t){
+      const elapsed = t-start, progress = Math.min(elapsed/duration,1);
+      const eased = 1 - Math.pow(1-progress,4);
+      wheelRotation = startDeg + (finalDeg-startDeg)*eased;
+      canvas.style.transform = `rotate(${wheelRotation}deg)`;
+      if (progress<1) requestAnimationFrame(frame);
+      else resolve();
+    }
+    requestAnimationFrame(frame);
+  });
+}
+
+// ---------------- Admin Logic ----------------
+document.getElementById("adminLoginLink").addEventListener("click", (e)=>{
+  e.preventDefault();
+  const pass = prompt("Admin Passcode:");
+  if (pass === "clfcgoals2026") {
+    localStorage.setItem(ADMIN_KEY, pass);
+    renderAdminDashboard();
+  }
+});
+
+async function renderAdminDashboard(){
+  const pass = localStorage.getItem(ADMIN_KEY);
+  if (!pass) return;
+  
+  app.innerHTML = `${heroHTML("Admin Dashboard")} <div class="center"><p>Loading...</p></div>`;
+  
+  try {
+    const res = await fetch(`/api/admin/dashboard?passcode=${pass}&grade=${currentAdminGrade}`);
+    const data = await res.json();
+    if (!res.ok) { alert(data.error); renderPinScreen(); return; }
+
+    app.innerHTML = `
+      ${heroHTML("Admin Dashboard")}
+      <div class="card admin-dashboard">
+        <label>Select Grade</label>
+        <select id="adminGradeSelect" style="margin-bottom:16px;">
+          <option value="League" ${currentAdminGrade==='League'?'selected':''}>League</option>
+          <option value="Reserves" ${currentAdminGrade==='Reserves'?'selected':''}>Reserves</option>
+          <option value="Colts" ${currentAdminGrade==='Colts'?'selected':''}>Colts</option>
+          <option value="Thirds" ${currentAdminGrade==='Thirds'?'selected':''}>Thirds</option>
+        </select>
+
+        <div class="stat-grid">
+          <div class="stat-card"><div class="stat-label">Grade</div><div class="stat-value">${currentAdminGrade}</div></div>
+          <div class="stat-card"><div class="stat-label">Prize Pool</div><div class="stat-value">$${(data.game.total_amount || 0).toFixed(2)}</div></div>
+        </div>
+        <div class="stat-card" style="margin-bottom:16px;">
+          <div class="stat-label">Payment Deadline</div>
+          <div class="stat-value" style="font-size:14px;">${data.game.payment_deadline_at ? new Date(data.game.payment_deadline_at).toLocaleString() : 'N/A'}</div>
+        </div>
+
+        ${data.result ? `
+          <div class="winner-banner">Result: ${data.result.player_name} (${data.result.winner_name || 'JACKPOT'})</div>
+        ` : `
+          <label>Enter First Goal Scorer</label>
+          <div class="player-select-wrap">
+            <input type="text" id="playerSearch" placeholder="Search player name...">
+            <div id="playerList" class="player-results-list"></div>
+          </div>
+          <button class="primary" id="confirmResultBtn" disabled>Confirm Result</button>
+        `}
+
+        <h3 style="margin-top:24px; font-family:'Anton'; text-transform:uppercase; color:var(--navy);">Manage Payments</h3>
+        <table class="results" style="margin-top:10px;">
+          <thead><tr><th>Name</th><th>Player</th><th>Status</th></tr></thead>
+          <tbody>
+            ${data.entries.map(e => `
+              <tr>
+                <td>${e.participant}</td>
+                <td>${e.player}</td>
+                <td>
+                  <span class="pay-${e.payment_status}">${e.payment_status}</span>
+                  <button class="btn-toggle" onclick="togglePayment('${e.id}', '${e.payment_status==='paid'?'pending':'paid'}')">
+                    Mark as ${e.payment_status==='paid'?'PENDING':'PAID'}
+                  </button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+        
+        <div class="center"><a class="back-link" id="adminLogout">Logout</a></div>
+      </div>
+    `;
+
+    document.getElementById("adminGradeSelect").addEventListener("change", (e) => {
+      currentAdminGrade = e.target.value;
+      renderAdminDashboard();
+    });
+
+    document.getElementById("adminLogout").addEventListener("click", () => {
+      localStorage.removeItem(ADMIN_KEY);
+      renderPinScreen();
+    });
+
+    if (!data.result) {
+      const search = document.getElementById("playerSearch");
+      const list = document.getElementById("playerList");
+      const btn = document.getElementById("confirmResultBtn");
+      let selectedPlayerId = null;
+
+      search.addEventListener("input", () => {
+        const val = search.value.toLowerCase();
+        const filtered = data.players.filter(p => p.name.toLowerCase().includes(val));
+        list.innerHTML = filtered.map(p => `<div class="player-result-item" data-id="${p.id}">${p.name}</div>`).join('');
+        list.style.display = filtered.length ? 'block' : 'none';
+      });
+
+      list.addEventListener("click", (e) => {
+        if (e.target.classList.contains("player-result-item")) {
+          selectedPlayerId = e.target.dataset.id;
+          search.value = e.target.textContent;
+          list.style.display = 'none';
+          btn.disabled = false;
+        }
+      });
+
+      btn.addEventListener("click", async () => {
+        if (!confirm("Are you sure? This will lock the game and calculate winners.")) return;
+        const res = await fetch("/api/admin/confirm-result", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ passcode: pass, gameId: data.game.id, playerId: selectedPlayerId })
+        });
+        if (res.ok) renderAdminDashboard();
+      });
+    }
+
+  } catch (e) { console.error(e); }
+}
+
+window.togglePayment = async (entryId, newStatus) => {
+  const pass = localStorage.getItem(ADMIN_KEY);
+  await fetch("/api/admin/toggle-payment", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ passcode: pass, entryId, status: newStatus })
+  });
+  renderAdminDashboard();
+};
+
+main();
+</script>
+</body>
+</html>
+`.replace(/\\$/g, '$');
