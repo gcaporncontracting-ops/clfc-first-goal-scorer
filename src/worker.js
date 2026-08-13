@@ -565,11 +565,11 @@ let currentAdminGrade = "League";
 let activePollInterval = null;
 
 function heroHTML(sub){
-  return `
+  return \`
     <p class="eyebrow">Cockburn Lakes F.C.</p>
     <h1 class="title">First Goal Scorer</h1>
-    <p class="subtitle">${sub}</p>
-  `;
+    <p class="subtitle">\${sub}</p>
+  \`;
 }
 
 function getSession(){
@@ -588,8 +588,8 @@ async function main(){
 
 // ---------------- Step 1: PIN ----------------
 function renderPinScreen(){
-  app.innerHTML = `
-    ${heroHTML("Enter your PIN to get started")}
+  app.innerHTML = \`
+    \${heroHTML("Enter your PIN to get started")}
     <div class="info-banner">
       <div class="info-banner-title">⚠ Testing mode</div>
       <p>The PIN is currently <strong>0000</strong> for testing. In future, your PIN will be the same one you use for Player's Player voting and for this app.</p>
@@ -602,18 +602,18 @@ function renderPinScreen(){
       <button class="primary" id="pinBtn">Continue</button>
       <div id="pinError"></div>
     </div>
-  `;
+  \`;
   const btn = document.getElementById("pinBtn");
   btn.addEventListener("click", async ()=>{
     const pin = document.getElementById("pinInput").value.trim();
     const errBox = document.getElementById("pinError");
     errBox.innerHTML = "";
-    if (!/^\d{4}$/.test(pin)){ errBox.innerHTML = `<p class="error">Enter a 4-digit PIN.</p>`; return; }
+    if (!/^\d{4}$/.test(pin)){ errBox.innerHTML = \`<p class="error">Enter a 4-digit PIN.</p>\`; return; }
     btn.disabled = true;
     try{
       const res = await fetch("/api/auth/pin", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ pin }) });
       const data = await res.json();
-      if (!res.ok){ errBox.innerHTML = `<p class="error">${data.error}</p>`; btn.disabled = false; return; }
+      if (!res.ok){ errBox.innerHTML = \`<p class="error">\${data.error}</p>\`; btn.disabled = false; return; }
       setSession({ pin, voterSlug: data.voterSlug, fullName: data.fullName, testingMode: data.testingMode });
       if (data.fullName){
         const session = getSession();
@@ -624,7 +624,7 @@ function renderPinScreen(){
         renderNameScreen(data);
       }
     }catch(e){
-      errBox.innerHTML = `<p class="error">Network error — try again.</p>`;
+      errBox.innerHTML = \`<p class="error">Network error — try again.</p>\`;
       btn.disabled = false;
     }
   });
@@ -633,23 +633,23 @@ function renderPinScreen(){
 // ---------------- Step 2: name ----------------
 function renderNameScreen(auth){
   const known = !!auth.fullName;
-  app.innerHTML = `
-    ${heroHTML("Your Name")}
+  app.innerHTML = \`
+    \${heroHTML("Your Name")}
     <div class="info-banner">
       <div class="info-banner-title">Testing Phase Info</div>
       <p>In future, only your PIN will be required as it will be linked to your name.</p>
     </div>
     <div class="card">
       <label for="nameInput">Full name</label>
-      <input type="text" id="nameInput" value="${known ? auth.fullName : ""}" placeholder="Your full name">
+      <input type="text" id="nameInput" value="\${known ? auth.fullName : ""}" placeholder="Your full name">
       <button class="primary" id="nameBtn">Continue</button>
       <div id="nameError"></div>
     </div>
-  `;
+  \`;
   document.getElementById("nameBtn").addEventListener("click", ()=>{
     const name = document.getElementById("nameInput").value.trim();
     const errBox = document.getElementById("nameError");
-    if (!name){ errBox.innerHTML = `<p class="error">Name can't be blank.</p>`; return; }
+    if (!name){ errBox.innerHTML = \`<p class="error">Name can't be blank.</p>\`; return; }
     const session = getSession();
     session.fullName = name;
     setSession(session);
@@ -662,23 +662,23 @@ async function renderGradeSelect(){
   const grades = ["League","Reserves","Colts","Thirds"];
   const session = getSession();
   
-  app.innerHTML = `
-    ${heroHTML("Pick your grade")}
+  app.innerHTML = \`
+    \${heroHTML("Pick your grade")}
     <div class="card">
       <div class="grade-grid">
-        ${grades.map(g=>`<button class="grade-btn" id="btn-${g}" data-grade="${g}">${g}</button>`).join("")}
+        \${grades.map(g=>\`<button class="grade-btn" id="btn-\${g}" data-grade="\${g}">\${g}</button>\`).join("")}
       </div>
       <p class="muted" id="gradeStatus"></p>
     </div>
-  `;
+  \`;
   
   // Check spin status for each grade
   for(const g of grades) {
     try {
-        const res = await fetch(`/api/games/check-spin?grade=${g}&voterSlug=${session.voterSlug || ""}&fullName=${session.fullName || ""}`);
+        const res = await fetch(\`/api/games/check-spin?grade=\${g}&voterSlug=\${session.voterSlug || ""}&fullName=\${session.fullName || ""}\`);
         const data = await res.json();
         if (data.hasSpun) {
-            const btn = document.getElementById(`btn-${g}`);
+            const btn = document.getElementById(\`btn-\${g}\`);
             btn.disabled = true;
             btn.innerHTML += "<br><span style='font-size:10px;'>SPUN</span>";
         }
@@ -692,7 +692,7 @@ async function renderGradeSelect(){
       const statusEl = document.getElementById("gradeStatus");
       statusEl.textContent = "Loading players...";
       try{
-        const res = await fetch(`/api/games/current?grade=${grade}`);
+        const res = await fetch(\`/api/games/current?grade=\${grade}\`);
         const data = await res.json();
         if (!res.ok){ statusEl.textContent = data.error; return; }
         const session = getSession();
@@ -709,43 +709,43 @@ async function renderGradeSelect(){
 
 // ---------------- Step 4: wheel + spin ----------------
 async function renderGradeSpin(grade, gameId, session){
-  app.innerHTML = `${heroHTML("Loading wheel...")}`;
-  const playersRes = await fetch(`/api/games/${gameId}/players`).then(r=>r.json());
+  app.innerHTML = \`\${heroHTML("Loading wheel...")}\`;
+  const playersRes = await fetch(\`/api/games/\${gameId}/players\`).then(r=>r.json());
   const players = playersRes.players || [];
   
-  const gameRes = await fetch(`/api/games/current?grade=${grade}`).then(r=>r.json());
+  const gameRes = await fetch(\`/api/games/current?grade=\${grade}\`).then(r=>r.json());
   const game = gameRes.game;
   const isLocked = game.status === 'locked';
 
-  app.innerHTML = `
-    ${heroHTML(grade + (isLocked ? " — Locked" : " — spin to find your player"))}
+  app.innerHTML = \`
+    \${heroHTML(grade + (isLocked ? " — Locked" : " — spin to find your player"))}
     <div id="resultBannerArea"></div>
     <div class="card">
-      ${isLocked ? `
+      \${isLocked ? \`
         <div class="center">
           <div class="locked-icon">🔒</div>
           <h2>Game Locked</h2>
-          <div class="win-amount">TO WIN: $${(game.final_prize_pool || 0).toFixed(2)}</div>
+          <div class="win-amount">TO WIN: $\${(game.final_prize_pool || 0).toFixed(2)}</div>
         </div>
-      ` : `
+      \` : \`
         <div class="spin-meta">
-          <div><span>Your name</span><b>${session.fullName}</b></div>
-          <div><span>Grade</span><b>${grade}</b></div>
-          <div><span>Players remaining</span><b id="playersRemaining">${players.length}</b></div>
+          <div><span>Your name</span><b>\${session.fullName}</b></div>
+          <div><span>Grade</span><b>\${grade}</b></div>
+          <div><span>Players remaining</span><b id="playersRemaining">\${players.length}</b></div>
         </div>
         <div class="wheel-wrap">
           <div class="pointer"></div>
           <canvas id="wheelCanvas"></canvas>
         </div>
         <button class="primary" id="spinBtn" style="margin-top:20px;">Spin the wheel</button>
-      `}
+      \`}
       <div id="spinError"></div>
       <div id="resultArea"></div>
     </div>
-    <div class="results-title">Live results — ${grade}</div>
+    <div class="results-title">Live results — \${grade}</div>
     <table class="results" id="resultsTable"><tbody><tr><td class="muted">Loading...</td></tr></tbody></table>
     <div class="center"><a class="back-link" id="startOverLink">Start over</a></div>
-  `;
+  \`;
 
   document.getElementById("startOverLink").addEventListener("click", ()=>{
     if (activePollInterval) clearInterval(activePollInterval);
@@ -764,12 +764,12 @@ async function renderGradeSpin(grade, gameId, session){
       errBox.innerHTML = "";
       btn.textContent = "Spinning...";
       try{
-        const res = await fetch(`/api/games/${gameId}/entries`, {
+        const res = await fetch(\`/api/games/\${gameId}/entries\`, {
           method:"POST", headers:{"Content-Type":"application/json"},
           body: JSON.stringify({ fullName: session.fullName, voterSlug: session.voterSlug, pin: session.pin })
         });
         const data = await res.json();
-        if (!res.ok){ errBox.innerHTML = `<p class="error">${data.error}</p>`; btn.textContent = "Spin the wheel"; btn.disabled = false; return; }
+        if (!res.ok){ errBox.innerHTML = \`<p class="error">\${data.error}</p>\`; btn.textContent = "Spin the wheel"; btn.disabled = false; return; }
         
         const targetPlayer = data.player.name;
         const targetIndex = wheelOptions.indexOf(targetPlayer);
@@ -781,7 +781,7 @@ async function renderGradeSpin(grade, gameId, session){
           pollResults(gameId);
         }, 800);
       }catch(e){
-        errBox.innerHTML = `<p class="error">Network error — try again.</p>`;
+        errBox.innerHTML = \`<p class="error">Network error — try again.</p>\`;
         btn.textContent = "Spin the wheel";
         btn.disabled = false;
       }
@@ -795,26 +795,26 @@ async function renderGradeSpin(grade, gameId, session){
 
 function renderResult(data){
   const area = document.getElementById("resultArea");
-  area.innerHTML = `
+  area.innerHTML = \`
     <div class="result-box">
       <div class="big-tick">✓</div>
       <h2>You got</h2>
-      <div class="player-name">${data.player.name}</div>
+      <div class="player-name">\${data.player.name}</div>
       <div class="pay-box">
-        <h3>To confirm entry, Pay $${data.entryFee}</h3>
+        <h3>To confirm entry, Pay $\${data.entryFee}</h3>
         <p>Pay via PayID to:</p>
-        <div class="payid">${data.payIdEmail}</div>
-        <p>Use <strong>${data.player.name}</strong> as reference.</p>
+        <div class="payid">\${data.payIdEmail}</div>
+        <p>Use <strong>\${data.player.name}</strong> as reference.</p>
         <button class="primary" id="paidBtn" style="background:var(--blue);box-shadow:0 6px 0 #123597;">I've Paid</button>
       </div>
-      <p class="final-note">${data.message}</p>
+      <p class="final-note">\${data.message}</p>
     </div>
-  `;
+  \`;
   document.getElementById("paidBtn").addEventListener("click", async ()=>{
     const btn = document.getElementById("paidBtn");
     btn.disabled = true;
     btn.textContent = "Reporting...";
-    await fetch(`/api/entries/${data.entryId}/payment-reported`, { method:"POST" });
+    await fetch(\`/api/entries/\${data.entryId}/payment-reported\`, { method:"POST" });
     btn.textContent = "Reported!";
     btn.style.background = "#1c7a3d";
     btn.style.boxShadow = "0 6px 0 #114d26";
@@ -823,36 +823,36 @@ function renderResult(data){
 
 async function pollResults(gameId){
   try{
-    const res = await fetch(`/api/games/${gameId}/entries`);
+    const res = await fetch(\`/api/games/\${gameId}/entries\`);
     const data = await res.json();
     const table = document.getElementById("resultsTable");
     const bannerArea = document.getElementById("resultBannerArea");
     
     if (data.gameResult){
       if (data.gameResult.is_jackpot){
-        bannerArea.innerHTML = `<div class="jackpot-banner"><div class="banner-title">JACKPOT!</div>No one picked the winner. $${data.gameResult.carry_over_amount.toFixed(2)} carries over.</div>`;
+        bannerArea.innerHTML = \`<div class="jackpot-banner"><div class="banner-title">JACKPOT!</div>No one picked the winner. $\${data.gameResult.carry_over_amount.toFixed(2)} carries over.</div>\`;
       } else {
-        bannerArea.innerHTML = `<div class="winner-banner"><div class="banner-title">WINNER!</div>${data.gameResult.winner_name} wins with ${data.gameResult.player_name}!</div>`;
+        bannerArea.innerHTML = \`<div class="winner-banner"><div class="banner-title">WINNER!</div>\${data.gameResult.winner_name} wins with \${data.gameResult.player_name}!</div>\`;
       }
     } else {
       bannerArea.innerHTML = "";
     }
 
     if (!data.entries || data.entries.length === 0){
-      table.innerHTML = `<tbody><tr><td class="muted">No entries yet.</td></tr></tbody>`;
+      table.innerHTML = \`<tbody><tr><td class="muted">No entries yet.</td></tr></tbody>\`;
       return;
     }
 
-    let html = `<thead><tr><th>Participant</th><th>Player</th><th>Payment</th></tr></thead><tbody>`;
+    let html = \`<thead><tr><th>Participant</th><th>Player</th><th>Payment</th></tr></thead><tbody>\`;
     data.entries.forEach(e=>{
       const isWinner = data.gameResult && e.id === data.gameResult.winner_entry_id;
-      html += `<tr class="${isWinner ? 'winner-row' : ''}">
-        <td>${e.participant}</td>
-        <td>${e.player}</td>
-        <td><span class="pay-${e.payment_status}">${e.payment_status}</span></td>
-      </tr>`;
+      html += \`<tr class="\${isWinner ? 'winner-row' : ''}">
+        <td>\${e.participant}</td>
+        <td>\${e.player}</td>
+        <td><span class="pay-\${e.payment_status}">\${e.payment_status}</span></td>
+      </tr>\`;
     });
-    html += `</tbody>`;
+    html += \`</tbody>\`;
     table.innerHTML = html;
   }catch(e){}
 }
@@ -898,7 +898,7 @@ function spinWheel(targetIndex, totalOptions){
       const elapsed = t-start, progress = Math.min(elapsed/duration,1);
       const eased = 1 - Math.pow(1-progress,4);
       wheelRotation = startDeg + (finalDeg-startDeg)*eased;
-      canvas.style.transform = `rotate(${wheelRotation}deg)`;
+      canvas.style.transform = \`rotate(\${wheelRotation}deg)\`;
       if (progress<1) requestAnimationFrame(frame);
       else resolve();
     }
@@ -920,66 +920,66 @@ async function renderAdminDashboard(){
   const pass = localStorage.getItem(ADMIN_KEY);
   if (!pass) return;
   
-  app.innerHTML = `${heroHTML("Admin Dashboard")} <div class="center"><p>Loading...</p></div>`;
+  app.innerHTML = \`\${heroHTML("Admin Dashboard")} <div class="center"><p>Loading...</p></div>\`;
   
   try {
-    const res = await fetch(`/api/admin/dashboard?passcode=${pass}&grade=${currentAdminGrade}`);
+    const res = await fetch(\`/api/admin/dashboard?passcode=\${pass}&grade=\${currentAdminGrade}\`);
     const data = await res.json();
     if (!res.ok) { alert(data.error); renderPinScreen(); return; }
 
-    app.innerHTML = `
-      ${heroHTML("Admin Dashboard")}
+    app.innerHTML = \`
+      \${heroHTML("Admin Dashboard")}
       <div class="card admin-dashboard">
         <label>Select Grade</label>
         <select id="adminGradeSelect" style="margin-bottom:16px;">
-          <option value="League" ${currentAdminGrade==='League'?'selected':''}>League</option>
-          <option value="Reserves" ${currentAdminGrade==='Reserves'?'selected':''}>Reserves</option>
-          <option value="Colts" ${currentAdminGrade==='Colts'?'selected':''}>Colts</option>
-          <option value="Thirds" ${currentAdminGrade==='Thirds'?'selected':''}>Thirds</option>
+          <option value="League" \${currentAdminGrade==='League'?'selected':''}>League</option>
+          <option value="Reserves" \${currentAdminGrade==='Reserves'?'selected':''}>Reserves</option>
+          <option value="Colts" \${currentAdminGrade==='Colts'?'selected':''}>Colts</option>
+          <option value="Thirds" \${currentAdminGrade==='Thirds'?'selected':''}>Thirds</option>
         </select>
 
         <div class="stat-grid">
-          <div class="stat-card"><div class="stat-label">Grade</div><div class="stat-value">${currentAdminGrade}</div></div>
-          <div class="stat-card"><div class="stat-label">Prize Pool</div><div class="stat-value">$${(data.game.total_amount || 0).toFixed(2)}</div></div>
+          <div class="stat-card"><div class="stat-label">Grade</div><div class="stat-value">\${currentAdminGrade}</div></div>
+          <div class="stat-card"><div class="stat-label">Prize Pool</div><div class="stat-value">$\${(data.game.total_amount || 0).toFixed(2)}</div></div>
         </div>
         <div class="stat-card" style="margin-bottom:16px;">
           <div class="stat-label">Payment Deadline</div>
-          <div class="stat-value" style="font-size:14px;">${data.game.payment_deadline_at ? new Date(data.game.payment_deadline_at).toLocaleString() : 'N/A'}</div>
+          <div class="stat-value" style="font-size:14px;">\${data.game.payment_deadline_at ? new Date(data.game.payment_deadline_at).toLocaleString() : 'N/A'}</div>
         </div>
 
-        ${data.result ? `
-          <div class="winner-banner">Result: ${data.result.player_name} (${data.result.winner_name || 'JACKPOT'})</div>
-        ` : `
+        \${data.result ? \`
+          <div class="winner-banner">Result: \${data.result.player_name} (\${data.result.winner_name || 'JACKPOT'})</div>
+        \` : \`
           <label>Enter First Goal Scorer</label>
           <div class="player-select-wrap">
             <input type="text" id="playerSearch" placeholder="Search player name...">
             <div id="playerList" class="player-results-list"></div>
           </div>
           <button class="primary" id="confirmResultBtn" disabled>Confirm Result</button>
-        `}
+        \`}
 
         <h3 style="margin-top:24px; font-family:'Anton'; text-transform:uppercase; color:var(--navy);">Manage Payments</h3>
         <table class="results" style="margin-top:10px;">
           <thead><tr><th>Name</th><th>Player</th><th>Status</th></tr></thead>
           <tbody>
-            ${data.entries.map(e => `
+            \${data.entries.map(e => \`
               <tr>
-                <td>${e.participant}</td>
-                <td>${e.player}</td>
+                <td>\${e.participant}</td>
+                <td>\${e.player}</td>
                 <td>
-                  <span class="pay-${e.payment_status}">${e.payment_status}</span>
-                  <button class="btn-toggle" onclick="togglePayment('${e.id}', '${e.payment_status==='paid'?'pending':'paid'}')">
-                    Mark as ${e.payment_status==='paid'?'PENDING':'PAID'}
+                  <span class="pay-\${e.payment_status}">\${e.payment_status}</span>
+                  <button class="btn-toggle" onclick="togglePayment('\${e.id}', '\${e.payment_status==='paid'?'pending':'paid'}')">
+                    Mark as \${e.payment_status==='paid'?'PENDING':'PAID'}
                   </button>
                 </td>
               </tr>
-            `).join('')}
+            \`).join('')}
           </tbody>
         </table>
         
         <div class="center"><a class="back-link" id="adminLogout">Logout</a></div>
       </div>
-    `;
+    \`;
 
     document.getElementById("adminGradeSelect").addEventListener("change", (e) => {
       currentAdminGrade = e.target.value;
@@ -1000,7 +1000,7 @@ async function renderAdminDashboard(){
       search.addEventListener("input", () => {
         const val = search.value.toLowerCase();
         const filtered = data.players.filter(p => p.name.toLowerCase().includes(val));
-        list.innerHTML = filtered.map(p => `<div class="player-result-item" data-id="${p.id}">${p.name}</div>`).join('');
+        list.innerHTML = filtered.map(p => \`<div class="player-result-item" data-id="\${p.id}">\${p.name}</div>\`).join('');
         list.style.display = filtered.length ? 'block' : 'none';
       });
 
@@ -1041,4 +1041,4 @@ main();
 </script>
 </body>
 </html>
-`.replace(/\\$/g, '$');
+`;
