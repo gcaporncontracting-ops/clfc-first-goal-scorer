@@ -26,6 +26,17 @@
     font-size:clamp(26px,7vw,38px);margin:0 0 6px;line-height:1;
   }
   .subtitle{text-align:center;font-size:13.5px;color:rgba(255,255,255,.75);margin:0 0 26px;}
+  .info-banner{
+    background:#fffbeb;border:2px solid var(--gold);border-radius:14px;
+    padding:16px 16px;margin-bottom:16px;color:var(--ink);
+  }
+  .info-banner-title{
+    font-family:'JetBrains Mono',monospace;font-weight:800;letter-spacing:.04em;text-transform:uppercase;
+    font-size:12px;color:#92400e;margin-bottom:8px;
+  }
+  .info-banner p{margin:0 0 8px;font-size:13px;line-height:1.5;color:#3a3320;}
+  .info-banner p:last-child{margin-bottom:0;}
+  .info-banner strong{color:var(--navy);}
 
   .card{
     background:var(--paper);border-radius:16px;padding:24px 20px;color:var(--ink);
@@ -128,6 +139,13 @@ async function main(){
 function renderPinScreen(){
   app.innerHTML = `
     ${heroHTML("Enter your PIN to get started")}
+    <div class="info-banner">
+      <div class="info-banner-title">⚠ Testing mode</div>
+      <p>The PIN is currently <strong>0000</strong> for testing. In future, your PIN will be the same one you use for Player's Player voting and for this app.</p>
+      <p>You get <strong>1 spin per grade</strong>. After spinning, you're locked out of that grade until the next round opens.</p>
+      <p>Any <strong>unpaid entry locks you out</strong> of all future spins until an admin confirms your payment.</p>
+      <p><strong>15%</strong> of the pot goes to the players fund. Payouts are via PayID, or can be credited toward future spins.</p>
+    </div>
     <div class="card">
       <label for="pinInput">Your PIN</label>
       <input type="tel" id="pinInput" inputmode="numeric" maxlength="4" placeholder="••••">
