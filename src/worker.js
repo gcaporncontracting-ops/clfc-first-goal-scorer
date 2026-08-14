@@ -54,7 +54,13 @@ async function syncSaturdayGames(env) {
       console.log(`Found ${grade} game vs ${opposingTeam} at ${gameDateTime} (Game ID: ${gameId})`);
       const summaryData = await fetchPlayHQ(`/v2/games/${gameId}/summary`, apiKey);
       const appearances = summaryData.data?.appearances || [];
-      const clubAppearances = appearances.filter((a) => a.teamId === teamId);
+      // BEGIN_NOTE: Exclude coaches/non-players like Heath Thorpe and Ryan Austin from team sheets
+      const excludedNames = ["heath thorpe", "ryan austin"];
+      const clubAppearances = appearances.filter(a => {
+        const pName = (a.firstName && a.lastName ? `${a.firstName} ${a.lastName}` : (a.name || "")).toLowerCase();
+        return a.teamId === teamId && !excludedNames.some(ex => pName.includes(ex));
+      });
+      // END_NOTE: Exclude coaches/non-players like Heath Thorpe and Ryan Austin from team sheets
       if (clubAppearances.length === 0) {
         console.log(`No player appearances found for ${grade} yet.`);
         continue;
