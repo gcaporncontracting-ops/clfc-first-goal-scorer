@@ -206,7 +206,16 @@ var worker_default = {
         ).bind(game.id, fullName).first();
         hasSpun = !!entry;
       }
-      return json({ hasSpun });
+      // BEGIN_NOTE: Team sheet restriction check for grade spinning
+      let isTeamSheetMember = false;
+      if (fullName) {
+        const teamMatch = await env.DB.prepare(
+          `SELECT id FROM players WHERE game_id = ? AND LOWER(name) = LOWER(?)`
+        ).bind(game.id, fullName.trim()).first();
+        isTeamSheetMember = !!teamMatch;
+      }
+      return json({ hasSpun, isTeamSheetMember });
+      // END_NOTE: Team sheet restriction check for grade spinning
     }
     if (pathname === "/api/games/current" && request.method === "GET") {
       const grade = url.searchParams.get("grade");
@@ -265,6 +274,15 @@ var worker_default = {
       }
       const already = await env.DB.prepare(`SELECT * FROM entries WHERE game_id = ? AND participant_id = ?`).bind(gameId, participant.id).first();
       if (already) return json({ error: "You've already spun for this grade." }, 409);
+
+      // BEGIN_NOTE: Enforce team sheet restriction preventing players from spinning their own grade's wheel
+      const teamSheetMatch = await env.DB.prepare(
+        `SELECT id FROM players WHERE game_id = ? AND LOWER(name) = LOWER(?)`
+      ).bind(gameId, fullName.trim()).first();
+      if (teamSheetMatch) {
+        return json({ error: `You are named on the team sheet for ${game.grade} and cannot spin this grade's wheel.` }, 403);
+      }
+      // END_NOTE: Enforce team sheet restriction preventing players from spinning their own grade's wheel
       let finalPlayer = null;
       let secondChances = 0;
       for (let attempt = 0; attempt < 30; attempt++) {
@@ -715,17 +733,23 @@ async function renderGradeSelect(){
     </div>
   \`;
   
-  // Check spin status for each grade
+  // BEGIN_NOTE: Frontend handling of team sheet restrictions for grade buttons
   const spunGrades = {};
+  const teamSheetRestrictedGrades = {};
   for(const g of grades) {
     try {
-        const res = await fetch(\`/api/games/check-spin?grade=\${g}&voterSlug=\${session.voterSlug || ""}&fullName=\${session.fullName || ""}\`);
+        const res = await fetch(`/api/games/check-spin?grade=${g}&voterSlug=${session.voterSlug || ""}&fullName=${encodeURIComponent(session.fullName || "")}`);
         const data = await res.json();
+        const btn = document.getElementById(`btn-${g}`);
         if (data.hasSpun) {
             spunGrades[g] = true;
-            const btn = document.getElementById(\`btn-\${g}\`);
             btn.classList.add("grade-btn-spun");
             btn.innerHTML += "<br><span style='font-size:10px;'>SPUN — view results</span>";
+        } else if (data.isTeamSheetMember) {
+            teamSheetRestrictedGrades[g] = true;
+            btn.disabled = true;
+            btn.classList.add("grade-btn-restricted");
+            btn.innerHTML += "<br><span style='font-size:10px;'>TEAM SHEET — locked</span>";
         }
     } catch(e) {}
   }
@@ -737,6 +761,11 @@ async function renderGradeSelect(){
         renderLockedOutSummary(grade, session);
         return;
       }
+      if (teamSheetRestrictedGrades[grade]) {
+        alert(`You are named on the team sheet for ${grade} and cannot spin this grade's wheel.`);
+        return;
+      }
+      // END_NOTE: Frontend handling of team sheet restrictions for grade buttons
       const statusEl = document.getElementById("gradeStatus");
       statusEl.textContent = "Loading players...";
       try{
