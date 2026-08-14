@@ -289,6 +289,7 @@ var worker_default = {
         return json({ error: `You are named on the team sheet for ${game.grade} and cannot spin this grade's wheel.` }, 403);
       }
       // END_NOTE: Enforce team sheet restriction preventing players from spinning their own grade's wheel
+      // BEGIN_NOTE: Fix race condition by atomically claiming player from wheel
       let finalPlayer = null;
       let secondChances = 0;
       for (let attempt = 0; attempt < 30; attempt++) {
@@ -298,8 +299,18 @@ var worker_default = {
         if (pool.length === 0) return json({ error: "No players remain in this draw." }, 409);
         const idx = secureRandomIndex(pool.length);
         const picked = pool[idx];
+        
+        // Attempt atomic claim
+        const claimRes = await env.DB.prepare(
+          `UPDATE players SET removed_from_wheel = 1 WHERE id = ? AND removed_from_wheel = 0`
+        ).bind(picked.id).run();
+        
+        if (claimRes.meta.changes === 0) {
+          // Player was concurrently claimed by another spin, retry loop
+          continue;
+        }
+
         if (picked.is_private) {
-          await env.DB.prepare(`UPDATE players SET removed_from_wheel = 1 WHERE id = ?`).bind(picked.id).run();
           await audit(env.DB, "private_player_second_chance", { entity_id: picked.id, participant_id: participant.id, game_id: gameId });
           secondChances++;
           continue;
@@ -308,7 +319,7 @@ var worker_default = {
         break;
       }
       if (!finalPlayer) return json({ error: "Could not resolve a valid pick — try again." }, 500);
-      await env.DB.prepare(`UPDATE players SET removed_from_wheel = 1 WHERE id = ?`).bind(finalPlayer.id).run();
+      // END_NOTE: Fix race condition by atomically claiming player from wheel
       const entryId = uid();
       await env.DB.prepare(
         `INSERT INTO entries (id, game_id, participant_id, player_id, entry_fee, payment_status, spin_completed_at)
