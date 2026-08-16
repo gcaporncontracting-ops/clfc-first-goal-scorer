@@ -887,6 +887,12 @@ async function main(){
     renderGradeSpin(session.grade, session.gameId, session);
     return;
   }
+  const persistedAuth = getPersistedAuth();
+  if (persistedAuth){
+    setSession(persistedAuth);
+    renderGradeSelect();
+    return;
+  }
   renderPinScreen();
 }
 
