@@ -1210,14 +1210,23 @@ async function renderGradeSpin(grade, gameId, session){
     <div class="center"><a class="back-link" id="startOverLink">Start over</a></div>
   \`;
 
-  document.getElementById("startOverLink").addEventListener("click", ()=>{
+  document.getElementById("startOverLink").addEventListener("click", (e)=>{
+    e.preventDefault();
+    console.log("Start over clicked");
     if (activePollInterval) clearInterval(activePollInterval);
     clearSession();
+    console.log("Session cleared");
     const persistedAuth = getPersistedAuth();
+    console.log("Persisted auth:", persistedAuth);
     if (persistedAuth){
       setSession(persistedAuth);
+      console.log("Session restored from persisted auth");
+    } else {
+      console.log("No persisted auth found!");
     }
+    console.log("About to call renderGradeSelect");
     renderGradeSelect();
+    console.log("renderGradeSelect called");
   });
 
   if (!isLocked) {
