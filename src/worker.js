@@ -895,9 +895,8 @@ async function main(){
     renderGradeSpin(session.grade, session.gameId, session);
     return;
   }
-  const persistedAuth = getPersistedAuth();
-  if (persistedAuth){
-    setSession(persistedAuth);
+  // If session exists but no grade/gameId, we're logged in but need to pick a grade
+  if (session && (session.voterSlug || session.fullName)){
     renderGradeSelect();
     return;
   }
