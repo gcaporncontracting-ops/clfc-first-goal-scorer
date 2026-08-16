@@ -1207,7 +1207,7 @@ async function renderGradeSpin(grade, gameId, session){
       <div id="spinError"></div>
       <div id="resultArea"></div>
     </div>
-    <div class="center"><a class="back-link" id="startOverLink">Start over</a></div>
+    <div class="center"><a class="back-link" id="startOverLink">← Back to grades</a></div>
   \`;
 
   document.getElementById("startOverLink").addEventListener("click", (e)=>{
