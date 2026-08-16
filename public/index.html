@@ -397,8 +397,11 @@ async function renderGradeSpin(grade, gameId, session){
   // "Back to Grades" handler: clear temporary session (grade/gameId) but keep persistent auth
   document.getElementById("backToGradesLink").addEventListener("click", ()=>{
     if (activePollInterval) clearInterval(activePollInterval);
+    const persistedAuth = getPersistedAuth();
     clearSession(); // Clear temporary session (grade/gameId)
-    // localStorage persists, so persistent auth (voterSlug/fullName) remains intact
+    if (persistedAuth) {
+      setSession(persistedAuth); // Restore session from persistent auth
+    }
     renderGradeSelect();
   });
 
