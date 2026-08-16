@@ -1064,7 +1064,14 @@ function renderNotReady(grade, session){
       <button class="primary" id="backBtn" style="margin-top:18px;background:var(--navy);box-shadow:0 6px 0 var(--navy-deep);">Back to grades</button>
     </div>
   \`;
-  document.getElementById("backBtn").addEventListener("click", ()=> renderGradeSelect());
+  document.getElementById("backBtn").addEventListener("click", ()=>{
+    const persistedAuth = getPersistedAuth();
+    clearSession();
+    if (persistedAuth) {
+      setSession(persistedAuth);
+    }
+    renderGradeSelect();
+  });
 }
 
 // ---------------- Locked-out summary: shown when a grade is already SPUN ----------------
@@ -1133,7 +1140,14 @@ async function renderLockedOutSummary(grade, session){
         <button class="primary" id="backToGradesBtn" style="margin-top:18px;background:var(--navy);box-shadow:0 6px 0 var(--navy-deep);">Back to grades</button>
       </div>
     \`;
-    document.getElementById("backToGradesBtn").addEventListener("click", ()=> renderGradeSelect());
+    document.getElementById("backToGradesBtn").addEventListener("click", ()=>{
+      const persistedAuth = getPersistedAuth();
+      clearSession();
+      if (persistedAuth) {
+        setSession(persistedAuth);
+      }
+      renderGradeSelect();
+    });
   }catch(e){
     app.innerHTML = \`\${heroHTML(grade)}<div class="card"><p class="error">Could not load results \u2014 try again.</p></div>\`;
   }
