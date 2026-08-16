@@ -881,6 +881,7 @@ function getSession(){
   try{ return JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "null"); }catch(e){ return null; }
 }
 function setSession(s){ sessionStorage.setItem(STORAGE_KEY, JSON.stringify(s)); }
+function clearSession(){ sessionStorage.removeItem(STORAGE_KEY); }
 function getPersistedAuth(){
   try{ return JSON.parse(localStorage.getItem(PERSISTED_AUTH_KEY) || "null"); }catch(e){ return null; }
 }
@@ -1174,7 +1175,7 @@ async function renderGradeSpin(grade, gameId, session){
   
   const gameRes = await fetch(\`/api/games/current?grade=\${grade}\`).then(r=>r.json());
   if (!gameRes.ready || !gameRes.game){
-    sessionStorage.removeItem(STORAGE_KEY);
+    clearSession();
     renderNotReady(grade, session);
     return;
   }
@@ -1211,7 +1212,7 @@ async function renderGradeSpin(grade, gameId, session){
 
   document.getElementById("startOverLink").addEventListener("click", ()=>{
     if (activePollInterval) clearInterval(activePollInterval);
-    sessionStorage.removeItem(STORAGE_KEY);
+    clearSession();
     const persistedAuth = getPersistedAuth();
     if (persistedAuth){
       setSession(persistedAuth);
