@@ -1212,7 +1212,11 @@ async function renderGradeSpin(grade, gameId, session){
   document.getElementById("startOverLink").addEventListener("click", ()=>{
     if (activePollInterval) clearInterval(activePollInterval);
     sessionStorage.removeItem(STORAGE_KEY);
-    main();
+    const persistedAuth = getPersistedAuth();
+    if (persistedAuth){
+      setSession(persistedAuth);
+    }
+    renderGradeSelect();
   });
 
   if (!isLocked) {
