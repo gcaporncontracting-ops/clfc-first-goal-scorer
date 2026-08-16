@@ -106,6 +106,13 @@
     color:rgba(255,255,255,.7);text-decoration:none;text-align:center;
     cursor:pointer;
   }
+  .back-link:hover{color:rgba(255,255,255,.95);}
+  .logout-link{
+    display:inline-block;margin-top:8px;font-family:'JetBrains Mono',monospace;font-size:10px;
+    color:rgba(255,255,255,.5);text-decoration:none;text-align:center;
+    cursor:pointer;
+  }
+  .logout-link:hover{color:rgba(255,255,255,.75);}
   .center{text-align:center;}
 
   /* Winner/Jackpot Styles */
@@ -148,7 +155,9 @@
 
 <script>
 const app = document.getElementById("app");
-const STORAGE_KEY = "clfc_fgs_session";
+const SESSION_KEY = "clfc_fgs_session";
+const ACTIVE_SLUG_KEY = "clfc_fgs_active_slug";
+const ACTIVE_NAME_KEY = "clfc_fgs_active_name";
 const ADMIN_KEY = "clfc_fgs_admin_pass";
 let currentAdminGrade = "League";
 let activePollInterval = null;
@@ -161,21 +170,56 @@ function heroHTML(sub){
   `;
 }
 
+// Session Management: Temporary session (sessionStorage) + Persistent auth (localStorage)
 function getSession(){
-  try{ return JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "null"); }catch(e){ return null; }
+  try{ return JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null"); }catch(e){ return null; }
 }
-function setSession(s){ sessionStorage.setItem(STORAGE_KEY, JSON.stringify(s)); }
+function setSession(s){ sessionStorage.setItem(SESSION_KEY, JSON.stringify(s)); }
+function clearSession(){ sessionStorage.removeItem(SESSION_KEY); }
+
+// Check if user has persistent login (voterSlug in localStorage)
+function getPersistedAuth(){
+  const slug = localStorage.getItem(ACTIVE_SLUG_KEY);
+  const name = localStorage.getItem(ACTIVE_NAME_KEY);
+  return (slug && name) ? { voterSlug: slug, fullName: name } : null;
+}
+
+// Store verified auth in localStorage for session persistence
+function persistAuth(voterSlug, fullName){
+  localStorage.setItem(ACTIVE_SLUG_KEY, voterSlug);
+  localStorage.setItem(ACTIVE_NAME_KEY, fullName);
+}
+
+// Clear persisted auth (logout)
+function clearPersistedAuth(){
+  localStorage.removeItem(ACTIVE_SLUG_KEY);
+  localStorage.removeItem(ACTIVE_NAME_KEY);
+  clearSession();
+}
 
 async function main(){
   const session = getSession();
+  
+  // If temporary session exists with grade, continue to spin screen
   if (session && session.grade && session.gameId){
     renderGradeSpin(session.grade, session.gameId, session);
     return;
   }
+  
+  // Check if user has persistent login (bypasses PIN screen)
+  const persistedAuth = getPersistedAuth();
+  if (persistedAuth){
+    // Restore session from persistent auth and go to grade selection
+    setSession(persistedAuth);
+    renderGradeSelect();
+    return;
+  }
+  
+  // No session — show PIN entry screen
   renderPinScreen();
 }
 
-// ---------------- Step 1: PIN ----------------
+// ============ STEP 1: PIN ENTRY ============
 function renderPinScreen(){
   app.innerHTML = `
     ${heroHTML("Enter your PIN to get started")}
@@ -203,11 +247,12 @@ function renderPinScreen(){
       const res = await fetch("/api/auth/pin", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ pin }) });
       const data = await res.json();
       if (!res.ok){ errBox.innerHTML = `<p class="error">${data.error}</p>`; btn.disabled = false; return; }
+      
+      // Verified! Store auth persistently and in temporary session
+      persistAuth(data.voterSlug, data.fullName || "");
       setSession({ pin, voterSlug: data.voterSlug, fullName: data.fullName, testingMode: data.testingMode });
+      
       if (data.fullName){
-        const session = getSession();
-        session.fullName = data.fullName;
-        setSession(session);
         renderGradeSelect();
       } else {
         renderNameScreen(data);
@@ -219,7 +264,7 @@ function renderPinScreen(){
   });
 }
 
-// ---------------- Step 2: name ----------------
+// ============ STEP 2: NAME SCREEN ============
 function renderNameScreen(auth){
   const known = !!auth.fullName;
   app.innerHTML = `
@@ -242,11 +287,12 @@ function renderNameScreen(auth){
     const session = getSession();
     session.fullName = name;
     setSession(session);
+    persistAuth(session.voterSlug, name); // Update persistent auth with full name
     renderGradeSelect();
   });
 }
 
-// ---------------- Step 3: grade ----------------
+// ============ STEP 3: GRADE SELECTION ============
 async function renderGradeSelect(){
   const grades = ["League","Reserves","Colts","Thirds"];
   const session = getSession();
@@ -258,6 +304,9 @@ async function renderGradeSelect(){
         ${grades.map(g=>`<button class="grade-btn" id="btn-${g}" data-grade="${g}">${g}</button>`).join("")}
       </div>
       <p class="muted" id="gradeStatus"></p>
+    </div>
+    <div class="center">
+      <a class="logout-link" id="logoutLink">Logout</a>
     </div>
   `;
   
@@ -273,6 +322,13 @@ async function renderGradeSelect(){
         }
     } catch(e) {}
   }
+
+  // Logout button handler
+  document.getElementById("logoutLink").addEventListener("click", (e) => {
+    e.preventDefault();
+    clearPersistedAuth();
+    main();
+  });
 
   document.querySelectorAll(".grade-btn").forEach(btn=>{
     btn.addEventListener("click", async ()=>{
@@ -296,7 +352,7 @@ async function renderGradeSelect(){
   });
 }
 
-// ---------------- Step 4: wheel + spin ----------------
+// ============ STEP 4: WHEEL & SPIN ============
 async function renderGradeSpin(grade, gameId, session){
   app.innerHTML = `${heroHTML("Loading wheel...")}`;
   const playersRes = await fetch(`/api/games/${gameId}/players`).then(r=>r.json());
@@ -333,13 +389,17 @@ async function renderGradeSpin(grade, gameId, session){
     </div>
     <div class="results-title">Live results — ${grade}</div>
     <table class="results" id="resultsTable"><tbody><tr><td class="muted">Loading...</td></tr></tbody></table>
-    <div class="center"><a class="back-link" id="startOverLink">Start over</a></div>
+    <div class="center">
+      <a class="back-link" id="backToGradesLink">← Back to Grades</a>
+    </div>
   `;
 
-  document.getElementById("startOverLink").addEventListener("click", ()=>{
+  // "Back to Grades" handler: clear temporary session (grade/gameId) but keep persistent auth
+  document.getElementById("backToGradesLink").addEventListener("click", ()=>{
     if (activePollInterval) clearInterval(activePollInterval);
-    sessionStorage.removeItem(STORAGE_KEY);
-    main();
+    clearSession(); // Clear temporary session (grade/gameId)
+    // localStorage persists, so persistent auth (voterSlug/fullName) remains intact
+    renderGradeSelect();
   });
 
   if (!isLocked) {
@@ -495,7 +555,7 @@ function spinWheel(targetIndex, totalOptions){
   });
 }
 
-// ---------------- Admin Logic ----------------
+// ============ ADMIN LOGIC ============
 document.getElementById("adminLoginLink").addEventListener("click", (e)=>{
   e.preventDefault();
   const pass = prompt("Admin Passcode:");
