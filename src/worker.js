@@ -864,6 +864,7 @@ var INDEX_HTML_CONTENT = `<!DOCTYPE html>
 const app = document.getElementById("app");
 const STORAGE_KEY = "clfc_fgs_session";
 const ADMIN_KEY = "clfc_fgs_admin_pass";
+const PERSISTED_AUTH_KEY = "clfc_fgs_auth";
 let currentAdminGrade = "League";
 let activePollInterval = null;
 
@@ -880,6 +881,12 @@ function getSession(){
   try{ return JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "null"); }catch(e){ return null; }
 }
 function setSession(s){ sessionStorage.setItem(STORAGE_KEY, JSON.stringify(s)); }
+function getPersistedAuth(){
+  try{ return JSON.parse(localStorage.getItem(PERSISTED_AUTH_KEY) || "null"); }catch(e){ return null; }
+}
+function savePersistentAuth(auth){
+  localStorage.setItem(PERSISTED_AUTH_KEY, JSON.stringify(auth));
+}
 
 async function main(){
   const session = getSession();
@@ -937,11 +944,10 @@ function renderPinScreen(){
       const res = await fetch("/api/auth/pin", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ pin, adminPasscode }) });
       const data = await res.json();
       if (!res.ok){ errBox.innerHTML = \`<p class="error">\${data.error}</p>\`; btn.disabled = false; return; }
-      setSession({ pin, adminPasscode, voterSlug: data.voterSlug, fullName: data.fullName, testingMode: data.testingMode });
+      const auth = { pin, adminPasscode, voterSlug: data.voterSlug, fullName: data.fullName, testingMode: data.testingMode };
+      setSession(auth);
+      savePersistentAuth(auth);
       if (data.fullName){
-        const session = getSession();
-        session.fullName = data.fullName;
-        setSession(session);
         renderGradeSelect();
       } else {
         renderNameScreen(data);
@@ -976,6 +982,7 @@ function renderNameScreen(auth){
     const session = getSession();
     session.fullName = name;
     setSession(session);
+    savePersistentAuth(session);
     renderGradeSelect();
   });
 }
