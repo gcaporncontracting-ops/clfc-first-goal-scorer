@@ -286,7 +286,6 @@ var worker_default = {
       const { pin, adminPasscode } = await request.json().catch(() => ({}));
       if (!pin || !/^\d{4}$/.test(pin)) return json({ error: "Enter a 4-digit PIN" }, 400);
       if (pin === TESTING_MASTER_PIN) {
-        if (adminPasscode !== ADMIN_PASSCODE) return json({ error: "Incorrect PIN" }, 401);
         await audit(env.DB, "authentication", { metadata: { mode: "testing_pin" } });
         return json({ ok: true, testingMode: true, voterSlug: null, fullName: null });
       }
