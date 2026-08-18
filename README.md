@@ -47,7 +47,7 @@ blocked once someone has a pending entry:
 
 ```
 POST /api/admin/mark-paid
-{ "entryId": "...", "passcode": "Warriors-Kick-9247" }
+{ "entryId": "...", "passcode": "94172079" }
 ```
 
 ## Setup
