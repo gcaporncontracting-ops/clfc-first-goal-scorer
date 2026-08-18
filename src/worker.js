@@ -218,7 +218,13 @@ var ADMIN_PASSCODE = "94172079";
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" }
+    headers: { 
+      "Content-Type": "application/json", 
+      "Cache-Control": "no-store",
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type"
+    }
   });
 }
 function uid() {
@@ -280,6 +286,15 @@ var worker_default = {
     ctx.waitUntil(handleScheduledSync(env, event));
   },
   async fetch(request, env, ctx) {
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type"
+        }
+      });
+    }
     const url = new URL(request.url);
     const { pathname } = url;
     if (pathname === "/api/auth/pin" && request.method === "POST") {
