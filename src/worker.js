@@ -311,7 +311,7 @@ var worker_default = {
     });
   }
 };
-export default worker_default;
+// export default worker_default;
 
 async function handleFetch(request, env, ctx) {
     if (request.method === "OPTIONS") {
@@ -649,11 +649,18 @@ async function handleFetch(request, env, ctx) {
           return json({ error: `Only found ${names.length} players for ${grade} — need ${EXPECTED_PLAYERS}.` }, 400);
         }
         const gameId = uid();
+        // Kickoff must be in the future, not "now" — /api/games/current
+        // auto-locks any game the instant Date.now() >= game_date_time, so
+        // stamping this with the creation time locked every mock game
+        // within seconds of being created. Six hours gives admins a
+        // realistic testing window before it locks on its own.
+        const kickoff = /* @__PURE__ */ new Date();
+        kickoff.setHours(kickoff.getHours() + 6);
         const deadline = /* @__PURE__ */ new Date();
         deadline.setDate(deadline.getDate() + 2);
         await env.DB.prepare(
           `INSERT INTO games (id, grade, home_team, away_team, game_date_time, payment_deadline_at, status, is_mock, starting_jackpot) VALUES (?,?,?,?,?,?,'open',1,0)`
-        ).bind(gameId, grade, "Cockburn Lakes", "TBC (mock)", (/* @__PURE__ */ new Date()).toISOString(), deadline.toISOString()).run();
+        ).bind(gameId, grade, "Cockburn Lakes", "TBC (mock)", kickoff.toISOString(), deadline.toISOString()).run();
         const stmt = env.DB.prepare(`INSERT INTO players (id, name, grade, game_id, is_private, active) VALUES (?,?,?,?,0,1)`);
         await env.DB.batch(names.map((name) => stmt.bind(uid(), name, grade, gameId)));
         await audit(env.DB, "game_created", { entity_id: gameId, game_id: gameId, metadata: { grade, mock: true, playerCount: names.length } });
