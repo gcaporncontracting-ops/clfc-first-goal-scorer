@@ -1,0 +1,42 @@
+# .github/workflows/deploy.yml
+# Warriors Hub - Cloudflare Workers CI/CD Deployment Workflow
+# This workflow automates building and deploying the Cloudflare Worker upon merging or pushing to main.
+
+name: Deploy Warriors Hub Worker
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # Step 1: Check out the repository source code
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # Step 2: Set up Node.js environment
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # Step 3: Install dependencies as requested
+      - name: Install Dependencies
+        run: npm install
+
+      # Step 4: Deploy to Cloudflare Workers using the official wrangler-action
+      # Note: If your project requires environment variables passed via CLI (e.g., --var ENVIRONMENT:production),
+      # you can add them to the 'command' input parameter below, such as: command: deploy --var ENVIRONMENT:production
+      # Also ensure your wrangler.toml or wrangler.jsonc declares all KV namespaces, D1 databases, and R2 buckets properly.
+      - name: Deploy to Cloudflare
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # command: deploy # Default command for wrangler-action is deploy
