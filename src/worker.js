@@ -26,7 +26,6 @@ async function fetchPlayHQ(endpoint, apiKey, tenant = "afl") {
   }
   return res.json();
 }
-var VOTE_LINKED_GRADES = ["League", "Reserves", "Colts"];
 var NON_PLAYER_EXCLUSIONS = {
   // PlayHQ sometimes lists a club official (coach, runner, trainer, etc.)
   // with roleType "Player" for a grade even though they're not actually
@@ -43,18 +42,24 @@ function isExcludedNonPlayer(grade, playerName) {
   return list.some((n) => n.trim().toLowerCase() === normalized);
 }
 function slugify(name) {
-  return name.trim().toLowerCase().replace(/\s+/g, "-").replace(/'/g, "");
+  return name.trim().toLowerCase().replace(/\s+/g, "-").replace(/'/g, "").replace(/\u2019/g, "");
 }
 async function generateUniqueVotingPin(env) {
   for (let i = 0; i < 20; i++) {
     const candidate = String(Math.floor(Math.random() * 1e4)).padStart(4, "0");
     if (candidate === "0000") continue;
-    const clash = await env.VOTES_KV.get(`pinused:${candidate}`);
+    const clash = await env.DB.prepare(`SELECT slug FROM player_directory WHERE pin = ?`).bind(candidate).first();
     if (!clash) return candidate;
   }
   return null;
 }
-async function syncGradeToVoting(env, grade, appearances) {
+// Ensures every player on a synced team sheet has a player_directory
+// identity (slug + PIN) so they can log in, spin the wheel, and be voted
+// for. This used to also write a `gradelist:{grade}` list into VOTES_KV
+// for the voting worker to read — that's gone now, since voting reads
+// the team sheet (games/players) directly, same as everything else. This
+// function's only job now is identity backfill, not roster maintenance.
+async function ensureTeamSheetIdentities(env, grade, appearances) {
   const publicAppearances = appearances.filter((a) => a.visible !== false);
   const names = publicAppearances.map(
     (player) => player.firstName && player.lastName ? `${player.firstName} ${player.lastName}` : player.name || "Player"
@@ -62,36 +67,36 @@ async function syncGradeToVoting(env, grade, appearances) {
   const newlyRegistered = [];
   for (const name of names) {
     const slug = slugify(name);
-    const existingName = await env.VOTES_KV.get(`name:${slug}`);
-    if (existingName) {
-      const rawGrades = await env.VOTES_KV.get(`grades:${slug}`);
-      const grades = rawGrades ? JSON.parse(rawGrades) : [];
+    const existing = await env.DB.prepare(`SELECT slug, grades FROM player_directory WHERE slug = ?`).bind(slug).first();
+    if (existing) {
+      const grades = existing.grades ? JSON.parse(existing.grades) : [];
       if (!grades.includes(grade)) {
         grades.push(grade);
-        await env.VOTES_KV.put(`grades:${slug}`, JSON.stringify(grades));
+        await env.DB.prepare(`UPDATE player_directory SET grades = ? WHERE slug = ?`).bind(JSON.stringify(grades), slug).run();
       }
       continue;
     }
     const pin = await generateUniqueVotingPin(env);
     if (!pin) {
-      console.error(`Could not generate a unique voting PIN for ${name} — skipped.`);
+      console.error(`Could not generate a unique PIN for ${name} — skipped.`);
       continue;
     }
-    await env.VOTES_KV.put(`pin:${slug}`, pin);
-    await env.VOTES_KV.put(`pinused:${pin}`, slug);
-    await env.VOTES_KV.put(`name:${slug}`, name);
-    await env.VOTES_KV.put(`grades:${slug}`, JSON.stringify([grade]));
-    newlyRegistered.push({ name, pin });
+    try {
+      await env.DB.prepare(
+        `INSERT INTO player_directory (slug, full_name, pin, grades, match_status) VALUES (?, ?, ?, ?, 'matched')`
+      ).bind(slug, name, pin, JSON.stringify([grade])).run();
+      newlyRegistered.push({ name, pin });
+    } catch (e) {
+      console.error(`Failed to register ${name} in player_directory:`, e);
+    }
   }
-  const sortedNames = [...names].sort((a, b) => a.localeCompare(b));
-  await env.VOTES_KV.put(`gradelist:${grade}`, JSON.stringify(sortedNames));
   if (newlyRegistered.length > 0) {
     try {
       const lines = newlyRegistered.map((p) => `${p.name}: ${p.pin}`).join("\n");
       await fetch("https://ntfy.sh/clfc-fgs-8f2k91x", {
         method: "POST",
-        headers: { "Title": `${grade} — new voters registered`, "Priority": "default", "Tags": "id" },
-        body: `${newlyRegistered.length} new player(s) added to Player's Player voting for ${grade}. Hand out their PINs:
+        headers: { "Title": `${grade} — new hub logins registered`, "Priority": "default", "Tags": "id" },
+        body: `${newlyRegistered.length} new player(s) from the ${grade} team sheet now have hub PINs (voting + kicker wheel). Hand out their PINs:
 ${lines}`
       });
     } catch (e) {
@@ -148,6 +153,7 @@ async function syncSaturdayGames(env) {
       if (existingGame) {
         internalGameId = existingGame.id;
         await env.DB.prepare(`UPDATE games SET away_team = ?, game_date_time = ?, payment_deadline_at = ?, status = 'open' WHERE id = ?`).bind(opposingTeam, gameDateTime, deadlineISO, internalGameId).run();
+        await audit(env.DB, "sync_game_time_updated", { entity_id: internalGameId, game_id: internalGameId, metadata: { grade, opponent: opposingTeam, game_date_time: gameDateTime } });
       } else {
         internalGameId = crypto.randomUUID();
         const lastGame = await env.DB.prepare(
@@ -157,6 +163,7 @@ async function syncSaturdayGames(env) {
         await env.DB.prepare(
           `INSERT INTO games (id, grade, home_team, away_team, game_date_time, payment_deadline_at, status, is_mock, starting_jackpot) VALUES (?, ?, 'Cockburn Lakes', ?, ?, ?, 'open', 0, ?)`
         ).bind(internalGameId, grade, opposingTeam, gameDateTime, deadlineISO, startingJackpot).run();
+        await audit(env.DB, "sync_game_time_logged", { entity_id: internalGameId, game_id: internalGameId, metadata: { grade, opponent: opposingTeam, game_date_time: gameDateTime, source: "playhq_sync" } });
       }
       const MIN_SANE_ROSTER = 10;
       const suspiciousShrink = existingUnspunCount >= MIN_SANE_ROSTER && clubAppearances.length < existingUnspunCount * 0.6;
@@ -186,12 +193,10 @@ async function syncSaturdayGames(env) {
         }
         console.log(`Successfully synced ${clubAppearances.length} players for ${grade}.`);
       }
-      if (VOTE_LINKED_GRADES.includes(grade)) {
-        try {
-          await syncGradeToVoting(env, grade, clubAppearances);
-        } catch (e) {
-          console.error(`Voting sync failed for ${grade}:`, e);
-        }
+      try {
+        await ensureTeamSheetIdentities(env, grade, clubAppearances);
+      } catch (e) {
+        console.error(`Identity backfill failed for ${grade}:`, e);
       }
       if (!wasAlreadySynced) {
         try {
@@ -240,8 +245,10 @@ async function audit(db, event_type, { entity_id = null, participant_id = null, 
   await db.prepare(`INSERT INTO audit_log (event_type, entity_id, participant_id, game_id, metadata) VALUES (?,?,?,?,?)`).bind(event_type, entity_id, participant_id, game_id, metadata ? JSON.stringify(metadata) : null).run();
 }
 async function mockGetPlayersForGrade(env, grade) {
-  const raw = await env.VOTES_KV.get(`gradelist:${grade}`);
-  const roster = raw ? JSON.parse(raw) : [];
+  const { results } = await env.DB.prepare(
+    `SELECT full_name FROM player_directory WHERE grades LIKE ?`
+  ).bind(`%"${grade}"%`).all();
+  const roster = (results || []).map((r) => r.full_name);
   const shuffled = [...roster];
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = secureRandomIndex(i + 1);
@@ -326,9 +333,10 @@ async function handleFetch(request, env, ctx) {
         await audit(env.DB, "authentication", { metadata: { mode: "testing_pin" } });
         return json({ ok: true, testingMode: true, voterSlug: null, fullName: null });
       }
-      const voterSlug = await env.VOTES_KV.get(`pinused:${pin}`);
-      if (!voterSlug) return json({ error: "Incorrect PIN" }, 401);
-      const fullName = await env.VOTES_KV.get(`name:${voterSlug}`) || voterSlug;
+      const voterRow = await env.DB.prepare(`SELECT slug, full_name FROM player_directory WHERE pin = ?`).bind(pin).first();
+      if (!voterRow) return json({ error: "Incorrect PIN" }, 401);
+      const voterSlug = voterRow.slug;
+      const fullName = voterRow.full_name || voterSlug;
       await audit(env.DB, "authentication", { metadata: { voterSlug } });
       return json({ ok: true, testingMode: false, voterSlug, fullName });
     }
@@ -396,7 +404,8 @@ async function handleFetch(request, env, ctx) {
         if (adminPasscode !== ADMIN_PASSCODE) return json({ error: "PIN could not be re-verified" }, 401);
         confirmedSlug = null;
       } else if (pin) {
-        confirmedSlug = await env.VOTES_KV.get(`pinused:${pin}`);
+        const row = await env.DB.prepare(`SELECT slug FROM player_directory WHERE pin = ?`).bind(pin).first();
+        confirmedSlug = row ? row.slug : null;
         if (!confirmedSlug) return json({ error: "PIN could not be re-verified" }, 401);
       } else {
         return json({ error: "PIN is required" }, 400);
