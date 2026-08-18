@@ -219,7 +219,7 @@ var ENTRY_FEE = 5;
 var PAYID_EMAIL = "playersfund@clfc.com";
 var EXPECTED_PLAYERS = 22;
 var TESTING_MASTER_PIN = "0000";
-var ADMIN_PASSCODE = "Warriors-YE8899UE";
+var ADMIN_PASSCODE = "94172079"; // Standardized to 94172079
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
