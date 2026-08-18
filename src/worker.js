@@ -510,7 +510,7 @@ var worker_default = {
       const game = await env.DB.prepare(query).bind(...params).first();
       if (!game) {
         await maybeLazySync(env, ctx);
-        return json({ error: "No active game found" }, 404);
+        return json({ error: "No active game found", noGame: true }, 200);
       }
       const { results: players } = await env.DB.prepare(`
         SELECT id, name FROM players WHERE game_id = ? ORDER BY name ASC
@@ -1460,100 +1460,93 @@ async function renderAdminDashboard(){
           <option value="Colts" \${currentAdminGrade==='Colts'?'selected':''}>Colts</option>
           <option value="Thirds" \${currentAdminGrade==='Thirds'?'selected':''}>Thirds</option>
     \`;
-    if (!res.ok) {
-      // No active game for this grade (e.g. team list not posted on
-      // PlayHQ yet) \u2014 this is not a login failure, so stay logged in and
-      // let the admin pick a different grade instead of bouncing them
-      // back to the PIN screen.
+    if (data.noGame) {
       app.innerHTML = \`
         \${heroHTML("Admin Dashboard")}
         <div class="card admin-dashboard">
           <label>Select Grade</label>
           <select id="adminGradeSelect" style="margin-bottom:16px;">\${gradeOptionsHTML}</select>
-          <div class="locked-note">No active game for <strong>\${currentAdminGrade}</strong> yet \u2014 its team list probably hasn't been posted on PlayHQ. Try a different grade.</div>
+          <div class="locked-note" style="margin-bottom:16px;">No active game for <strong>\${currentAdminGrade}</strong> yet. Trigger a sync or create a mock game below.</div>
+          
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
+            <button class="primary" id="syncPlayHQBtn" style="margin-top:0; background:var(--navy); box-shadow:0 4px 0 var(--navy-deep);">Sync PlayHQ</button>
+            <button class="primary" id="createMockBtn" style="margin-top:0; background:var(--gold); color:var(--navy); box-shadow:0 4px 0 #b58527;">Create Mock</button>
+          </div>
+          
           <div class="center"><a class="back-link" id="adminLogout">Logout</a></div>
         </div>
       \`;
-      document.getElementById("adminGradeSelect").addEventListener("change", (e) => {
-        currentAdminGrade = e.target.value;
-        renderAdminDashboard();
-      });
-      document.getElementById("adminLogout").addEventListener("click", () => {
-        localStorage.removeItem(ADMIN_KEY);
-        renderPinScreen();
-      });
-      return;
-    }
+    } else {
+      app.innerHTML = \`
+        \${heroHTML("Admin Dashboard")}
+        <div class="card admin-dashboard">
+          <label>Select Grade</label>
+          <select id="adminGradeSelect" style="margin-bottom:16px;">\${gradeOptionsHTML}</select>
 
-    app.innerHTML = \`
-      \${heroHTML("Admin Dashboard")}
-      <div class="card admin-dashboard">
-        <label>Select Grade</label>
-        <select id="adminGradeSelect" style="margin-bottom:16px;">\${gradeOptionsHTML}</select>
-
-        <div class="stat-grid">
-          <div class="stat-card"><div class="stat-label">Grade</div><div class="stat-value">\${currentAdminGrade}</div></div>
-          <div class="stat-card"><div class="stat-label">Prize Pool</div><div class="stat-value">$\${(data.game.total_amount || 0).toFixed(2)}</div></div>
-        </div>
-        <div class="stat-card" style="margin-bottom:16px;">
-          <div class="stat-label">Payment Deadline</div>
-          <div class="stat-value" style="font-size:14px;">\${data.game.payment_deadline_at ? new Date(data.game.payment_deadline_at).toLocaleString() : 'N/A'}</div>
-        </div>
-
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
-          <button class="primary" id="syncPlayHQBtn" style="margin-top:0; background:var(--navy); box-shadow:0 4px 0 var(--navy-deep);">Sync PlayHQ</button>
-          <button class="primary" id="createMockBtn" style="margin-top:0; background:var(--gold); color:var(--navy); box-shadow:0 4px 0 #b58527;">Create Mock</button>
-        </div>
-
-        <button class="btn-danger" id="clearSpinsBtn" style="margin-bottom:16px;">Clear all spins for \${currentAdminGrade}</button>
-
-        \${data.result ? (
-          data.result.is_jackpot ? \`
-            <div class="admin-jackpot-banner">
-              <div class="admin-winner-trophy">\u{1F4B0}</div>
-              <div class="admin-winner-eyebrow">Jackpot \u2014 no one picked it</div>
-              <div class="admin-winner-player">\${data.result.player_name}</div>
-              <div class="admin-winner-sub">$\${(data.result.carry_over_amount || 0).toFixed(2)} carries over to next round</div>
-            </div>
-          \` : \`
-            <div class="admin-winner-banner">
-              <div class="admin-winner-trophy">\u{1F3C6}</div>
-              <div class="admin-winner-eyebrow">Winner confirmed!</div>
-              <div class="admin-winner-player">\${data.result.winner_name}</div>
-              <div class="admin-winner-sub">Picked <b>\${data.result.player_name}</b> \u2014 $\${(data.result.total_prize_pool || 0).toFixed(2)} won</div>
-            </div>
-          \`
-        ) : \`
-          <label>Enter First Goal Scorer</label>
-          <div class="player-select-wrap">
-            <input type="text" id="playerSearch" placeholder="Search player name...">
-            <div id="playerList" class="player-results-list"></div>
+          <div class="stat-grid">
+            <div class="stat-card"><div class="stat-label">Grade</div><div class="stat-value">\${currentAdminGrade}</div></div>
+            <div class="stat-card"><div class="stat-label">Prize Pool</div><div class="stat-value">$\${(data.game.total_amount || 0).toFixed(2)}</div></div>
           </div>
-          <button class="primary" id="confirmResultBtn" disabled>Confirm Result</button>
-        \`}
+          <div class="stat-card" style="margin-bottom:16px;">
+            <div class="stat-label">Payment Deadline</div>
+            <div class="stat-value" style="font-size:14px;">\${data.game.payment_deadline_at ? new Date(data.game.payment_deadline_at).toLocaleString() : 'N/A'}</div>
+          </div>
 
-        <h3 style="margin-top:24px; font-family:'Anton'; text-transform:uppercase; color:var(--navy);">Manage Payments</h3>
-        <table class="results" style="margin-top:10px;">
-          <thead><tr><th>Name</th><th>Player</th><th>Status</th></tr></thead>
-          <tbody>
-            \${data.entries.map(e => \`
-              <tr>
-                <td>\${e.participant}</td>
-                <td>\${e.player}</td>
-                <td>
-                  <span class="pay-\${e.payment_status}">\${e.payment_status}</span>
-                  <button class="btn-toggle" onclick="togglePayment('\${e.id}', '\${e.payment_status==='paid'?'pending':'paid'}')">
-                    Mark as \${e.payment_status==='paid'?'PENDING':'PAID'}
-                  </button>
-                </td>
-              </tr>
-            \`).join('')}
-          </tbody>
-        </table>
-        
-        <div class="center"><a class="back-link" id="adminLogout">Logout</a></div>
-      </div>
-    \`;
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
+            <button class="primary" id="syncPlayHQBtn" style="margin-top:0; background:var(--navy); box-shadow:0 4px 0 var(--navy-deep);">Sync PlayHQ</button>
+            <button class="primary" id="createMockBtn" style="margin-top:0; background:var(--gold); color:var(--navy); box-shadow:0 4px 0 #b58527;">Create Mock</button>
+          </div>
+
+          <button class="btn-danger" id="clearSpinsBtn" style="margin-bottom:16px;">Clear all spins for \${currentAdminGrade}</button>
+
+          \${data.result ? (
+            data.result.is_jackpot ? \`
+              <div class="admin-jackpot-banner">
+                <div class="admin-winner-trophy">\u{1F4B0}</div>
+                <div class="admin-winner-eyebrow">Jackpot \u2014 no one picked it</div>
+                <div class="admin-winner-player">\${data.result.player_name}</div>
+                <div class="admin-winner-sub">$\${(data.result.carry_over_amount || 0).toFixed(2)} carries over to next round</div>
+              </div>
+            \` : \`
+              <div class="admin-winner-banner">
+                <div class="admin-winner-trophy">\u{1F3C6}</div>
+                <div class="admin-winner-eyebrow">Winner confirmed!</div>
+                <div class="admin-winner-player">\${data.result.winner_name}</div>
+                <div class="admin-winner-sub">Picked <b>\${data.result.player_name}</b> \u2014 $\${(data.result.total_prize_pool || 0).toFixed(2)} won</div>
+              </div>
+            \`
+          ) : \`
+            <label>Enter First Goal Scorer</label>
+            <div class="player-select-wrap">
+              <input type="text" id="playerSearch" placeholder="Search player name...">
+              <div id="playerList" class="player-results-list"></div>
+            </div>
+            <button class="primary" id="confirmResultBtn" disabled>Confirm Result</button>
+          \`}
+
+          <h3 style="margin-top:24px; font-family:'Anton'; text-transform:uppercase; color:var(--navy);">Manage Payments</h3>
+          <table class="results" style="margin-top:10px;">
+            <thead><tr><th>Name</th><th>Player</th><th>Status</th></tr></thead>
+            <tbody>
+              \${data.entries.map(e => \`
+                <tr>
+                  <td>\${e.participant}</td>
+                  <td>\${e.player}</td>
+                  <td>
+                    <span class="pay-\${e.payment_status}">\${e.payment_status}</span>
+                    <button class="btn-toggle" onclick="togglePayment('\${e.id}', '\${e.payment_status==='paid'?'pending':'paid'}')">
+                      Mark as \${e.payment_status==='paid'?'PENDING':'PAID'}
+                    </button>
+                  </td>
+                </tr>
+              \`).join('')}
+            </tbody>
+          </table>
+          
+          <div class="center"><a class="back-link" id="adminLogout">Logout</a></div>
+        </div>
+      \`;
+    }
 
     document.getElementById("adminGradeSelect").addEventListener("change", (e) => {
       currentAdminGrade = e.target.value;
