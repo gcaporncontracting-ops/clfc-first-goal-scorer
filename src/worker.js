@@ -279,6 +279,49 @@ async function getCurrentGame(env, grade) {
   ).bind(grade).first();
   return existing || null;
 }
+
+async function syncFromWarriorsHub(env, ctx, grade) {
+  const hubUrl = `https://warriors-hub.gcaporncontracting.workers.dev/api/teams/${grade}`;
+  try {
+    const response = await fetch(hubUrl);
+    if (!response.ok) {
+      return { error: "Failed to fetch from Warriors Hub", grade, status: response.status };
+    }
+    const data = await response.json();
+    if (!data.players || data.players.length === 0) {
+      return { error: "Team roster not live yet", grade, noRoster: true };
+    }
+    const gameId = data.game?.id || uid();
+    const homeTeam = data.game?.home_team || "Cockburn Lakes";
+    const awayTeam = data.game?.away_team || "Opposition";
+    const gameDateTime = data.game?.game_date_time || new Date().toISOString();
+    const isMock = data.game?.is_mock ? 1 : 0;
+
+    await env.DB.prepare(`
+      INSERT OR REPLACE INTO games (id, grade, home_team, away_team, game_date_time, status, is_mock, created_at)
+      VALUES (?, ?, ?, ?, ?, 'open', ?, datetime('now'))
+    `).bind(gameId, grade, homeTeam, awayTeam, gameDateTime, isMock).run();
+
+    await env.DB.prepare(`DELETE FROM players WHERE game_id = ?`).bind(gameId).run();
+
+    for (const p of data.players) {
+      await env.DB.prepare(`
+        INSERT INTO players (id, name, grade, game_id, active, removed_from_wheel)
+        VALUES (?, ?, ?, ?, 1, 0)
+      `).bind(uid(), p.name, grade, gameId).run();
+    }
+
+    await audit(env.DB, "warriors_hub_sync_complete", {
+      game_id: gameId,
+      metadata: { grade, players_count: data.players.length, source: "Warriors Hub" }
+    });
+
+    return { ok: true, grade, game_id: gameId, players_added: data.players.length };
+  } catch (e) {
+    console.error("Warriors Hub sync error:", e);
+    return { error: e.message, grade };
+  }
+}
 // ---------------- Admin wheel lockout (manual, global) ----------------
 // Replaces the old automatic "lock the wheel once kickoff time passes"
 // behaviour. Admin now flips this on/off by hand from the dashboard; when
