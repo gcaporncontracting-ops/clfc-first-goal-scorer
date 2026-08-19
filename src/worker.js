@@ -1653,12 +1653,7 @@ async function renderAdminDashboard(){
           <label>Select Grade</label>
           <select id="adminGradeSelect" style="margin-bottom:16px;">\${gradeOptionsHTML}</select>
           \${lockoutSectionHTML}
-          <div class="locked-note" style="margin-bottom:16px;">No active game for <strong>\${currentAdminGrade}</strong> yet. Trigger a sync or create a mock game below.</div>
-          
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
-            <button class="primary" id="syncPlayHQBtn" style="margin-top:0; background:var(--navy); box-shadow:0 4px 0 var(--navy-deep);">Sync PlayHQ</button>
-            <button class="primary" id="createMockBtn" style="margin-top:0; background:var(--gold); color:var(--navy); box-shadow:0 4px 0 #b58527;">Create Mock</button>
-          </div>
+          <div class="locked-note" style="margin-bottom:16px;">No active game for ${currentAdminGrade} yet. Use the Warriors Hub admin page → Teams Admin to sync PlayHQ or generate a mock roster — it'll show up here automatically once it does.</div>
         </div>
       \`;
     } else {
@@ -1683,12 +1678,7 @@ async function renderAdminDashboard(){
             <div class="stat-value" style="font-size:14px;">\${data.game.payment_deadline_at ? new Date(data.game.payment_deadline_at).toLocaleString() : 'N/A'}</div>
           </div>
 
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
-            <button class="primary" id="syncPlayHQBtn" style="margin-top:0; background:var(--navy); box-shadow:0 4px 0 var(--navy-deep);">Sync PlayHQ</button>
-            <button class="primary" id="createMockBtn" style="margin-top:0; background:var(--gold); color:var(--navy); box-shadow:0 4px 0 #b58527;">Create Mock</button>
-          </div>
-
-          <button class="btn-danger" id="clearSpinsBtn" style="margin-bottom:16px;">Clear all spins for \${currentAdminGrade}</button>
+          <button class="btn-danger" id="clearSpinsBtn" style="margin-bottom:16px;">Clear all spins for ${currentAdminGrade}</button>
 
           \${data.result ? (
             data.result.is_jackpot ? \`
@@ -1775,39 +1765,7 @@ async function renderAdminDashboard(){
       renderPinScreen();
     });
 
-    document.getElementById("syncPlayHQBtn").addEventListener("click", async () => {
-      if (!confirm("Trigger manual sync from PlayHQ? This will check for upcoming games and sync rosters.")) return;
-      const btn = document.getElementById("syncPlayHQBtn");
-      btn.disabled = true; btn.textContent = "Syncing...";
-      try {
-        const res = await fetch("/api/admin/sync-playhq", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ passcode: pass })
-        });
-        const d = await res.json();
-        alert(d.ok ? d.message : d.error);
-        renderAdminDashboard();
-      } catch(e) { alert("Network error"); }
-      finally { btn.disabled = false; btn.textContent = "Sync PlayHQ"; }
-    });
 
-    document.getElementById("createMockBtn").addEventListener("click", async () => {
-      if (!confirm("Create a mock game for " + currentAdminGrade + "? This will draw 22 players from the voting roster.")) return;
-      const btn = document.getElementById("createMockBtn");
-      btn.disabled = true; btn.textContent = "Creating...";
-      try {
-        const res = await fetch("/api/admin/create-mock-game", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ passcode: pass, grade: currentAdminGrade })
-        });
-        const d = await res.json();
-        if (d.ok) { alert("Mock game created!"); renderAdminDashboard(); }
-        else { alert(d.error); }
-      } catch(e) { alert("Network error"); }
-      finally { btn.disabled = false; btn.textContent = "Create Mock"; }
-    });
 
     document.getElementById("clearSpinsBtn").addEventListener("click", async () => {
       const grade = currentAdminGrade;
