@@ -960,7 +960,7 @@ const app = document.getElementById("app");
 const STORAGE_KEY = "clfc_fgs_session";
 const ADMIN_KEY = "clfc_fgs_admin_pass";
 const PERSISTED_AUTH_KEY = "clfc_fgs_auth";
-let currentAdminGrade = "League";
+let currentAdminGrade = null;
 let activePollInterval = null;
 
 function heroHTML(sub){
@@ -1527,9 +1527,35 @@ document.getElementById("adminLoginLink").addEventListener("click", (e)=>{
   renderAdminDashboard();
 });
 
+window.setAdminGrade = (grade) => {
+  currentAdminGrade = grade;
+  renderAdminDashboard();
+};
+
 async function renderAdminDashboard(){
   const pass = localStorage.getItem(ADMIN_KEY);
   if (!pass) return;
+  
+  if (!currentAdminGrade) {
+    app.innerHTML = \`
+      \${heroHTML("Admin Dashboard")}
+      <div class="card admin-dashboard">
+        <h2 style="font-family:'Anton'; text-transform:uppercase; color:var(--navy); margin-bottom:16px; font-size:20px; text-align:center;">Select Grade</h2>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:24px;">
+          <button class="primary" onclick="setAdminGrade('League')" style="margin-top:0; height:60px; font-size:18px;">League</button>
+          <button class="primary" onclick="setAdminGrade('Reserves')" style="margin-top:0; height:60px; font-size:18px;">Reserves</button>
+          <button class="primary" onclick="setAdminGrade('Colts')" style="margin-top:0; height:60px; font-size:18px;">Colts</button>
+          <button class="primary" onclick="setAdminGrade('Thirds')" style="margin-top:0; height:60px; font-size:18px;">Thirds</button>
+        </div>
+        <div class="center"><a class="back-link" id="adminLogout">Logout</a></div>
+      </div>
+    \`;
+    document.getElementById("adminLogout").addEventListener("click", () => {
+      localStorage.removeItem(ADMIN_KEY);
+      renderPinScreen();
+    });
+    return;
+  }
   
   app.innerHTML = \`\${heroHTML("Admin Dashboard")} <div class="center"><p>Loading...</p></div>\`;
   
@@ -1560,6 +1586,11 @@ async function renderAdminDashboard(){
       app.innerHTML = \`
         \${heroHTML("Admin Dashboard")}
         <div class="card admin-dashboard">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <a class="back-link" onclick="setAdminGrade(null)" style="cursor:pointer;">&larr; Back to Grades</a>
+            <a class="back-link" id="adminLogout">Logout</a>
+          </div>
+
           <label>Select Grade</label>
           <select id="adminGradeSelect" style="margin-bottom:16px;">\${gradeOptionsHTML}</select>
           \${lockoutSectionHTML}
@@ -1569,14 +1600,17 @@ async function renderAdminDashboard(){
             <button class="primary" id="syncPlayHQBtn" style="margin-top:0; background:var(--navy); box-shadow:0 4px 0 var(--navy-deep);">Sync PlayHQ</button>
             <button class="primary" id="createMockBtn" style="margin-top:0; background:var(--gold); color:var(--navy); box-shadow:0 4px 0 #b58527;">Create Mock</button>
           </div>
-          
-          <div class="center"><a class="back-link" id="adminLogout">Logout</a></div>
         </div>
       \`;
     } else {
       app.innerHTML = \`
         \${heroHTML("Admin Dashboard")}
         <div class="card admin-dashboard">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <a class="back-link" onclick="setAdminGrade(null)" style="cursor:pointer;">&larr; Back to Grades</a>
+            <a class="back-link" id="adminLogout">Logout</a>
+          </div>
+
           <label>Select Grade</label>
           <select id="adminGradeSelect" style="margin-bottom:16px;">\${gradeOptionsHTML}</select>
           \${lockoutSectionHTML}
@@ -1640,8 +1674,6 @@ async function renderAdminDashboard(){
               \`).join('')}
             </tbody>
           </table>
-          
-          <div class="center"><a class="back-link" id="adminLogout">Logout</a></div>
         </div>
       \`;
     }
